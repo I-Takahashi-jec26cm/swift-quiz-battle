@@ -200,7 +200,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, getDocs, setDoc, deleteDoc,
+  initializeFirestore, doc, getDoc, getDocs, setDoc, deleteDoc,
   collection, onSnapshot, query, orderBy, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
@@ -215,7 +215,9 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+// スマホ回線でストリーミング接続がブロックされても onSnapshot が届くよう、
+// ロングポーリングを自動検出で有効化する
+const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
 const COL = "quizRooms";
 const MIN_PLAYERS = 2;
