@@ -75,6 +75,12 @@
   .choice.correct { border-color:var(--good); background:var(--good-bg); }
   .choice.wrong { border-color:var(--bad); background:var(--bad-bg); }
   .waitmsg { text-align:center; color:var(--muted); font-size:.86rem; margin-top:14px; }
+  .hint-row { margin-top:13px; }
+  .hint-btn { display:inline-flex; align-items:center; gap:7px; background:none; border:1.5px dashed color-mix(in srgb,var(--gold) 55%,var(--line)); color:var(--gold); border-radius:999px; padding:8px 14px; font-family:var(--font-ui); font-weight:700; font-size:.82rem; cursor:pointer; }
+  .hint-btn:disabled { opacity:.5; cursor:default; }
+  .hint-box { margin-top:10px; border-radius:11px; padding:11px 12px; font-size:.85rem; background:color-mix(in srgb,var(--gold) 10%,transparent); border:1px solid color-mix(in srgb,var(--gold) 30%,transparent); }
+  .hint-box .head { font-weight:800; color:var(--gold); font-size:.76rem; margin-bottom:2px; }
+  .hint-warn { color:var(--muted); font-size:.72rem; margin-top:5px; }
 
   /* リザルト */
   .result-head { text-align:center; margin-bottom:12px; }
@@ -147,6 +153,10 @@
       <p class="prompt" id="qPrompt"></p>
       <pre class="code" id="qCode"></pre>
       <div class="choices" id="qChoices"></div>
+      <div class="hint-row" id="hintRow">
+        <button class="hint-btn" id="hintBtn">💡 ヒントを見る（この問題の得点は半分に）</button>
+        <div class="hint-box" id="hintBox" hidden></div>
+      </div>
       <p class="waitmsg" id="answeredMsg" hidden>回答しました。みんなを待っています…</p>
     </div>
 
@@ -216,21 +226,21 @@ const BASE = 500, SPEED = 500;
 
 /* ===== 問題（week01: 型・制御/コレクション, week02: Optional） ===== */
 const QUESTIONS = [
-  { unit:"型と制御構文", prompt:"定数 passingScore に Int 型を型注釈付きで宣言します。空欄は？", code:["let passingScore@@ 60"], choices:[": Int =","= Int:",": Int ->","as Int ="], answer:0, explain:"型注釈は <code>名前: 型</code>。<code>let passingScore: Int = 60</code>。" },
-  { unit:"型変換", prompt:"passingScore(Int) を Double にして引き算します。", code:["let targetAverage = 75.5",'print(targetAverage - @@)'], choices:["Double(passingScore)","passingScore.toDouble()","(Double)passingScore","passingScore as Double"], answer:0, explain:"Swift に暗黙の型変換はなく <code>Double(passingScore)</code> と書きます。" },
-  { unit:"配列", prompt:"配列 scores の要素数を取り出します。", code:['print(scores@@)'], choices:[".count",".length",".size()",".length()"], answer:0, explain:"要素数は <code>.count</code>（Java の length/size() とは違う）。" },
-  { unit:"配列", prompt:"もとを変えず降順に並べ替えた新しい配列を得ます。", code:["let ranking = scores@@"], choices:[".sorted(by: >)",".sort(by: >)",".sorted(>: by)",".reverse()"], answer:0, explain:"<code>sorted(by:)</code> は新しい配列を返す。() なしの <code>sort()</code> は破壊的。" },
-  { unit:"範囲と繰り返し", prompt:"添字 i を 0 から count の手前まで回します。", code:["for i in @@ {","  print(names[i])","}"], choices:["0..<names.count","0...names.count","0, names.count","0 to names.count"], answer:0, explain:"<code>0..<n</code> は末尾を含まない。<code>0...n</code> は n を含み範囲外に。" },
-  { unit:"範囲と繰り返し", prompt:"合格点(60以上)の要素だけを if なしで処理します。", code:["for s in scores @@ s >= 60 {","  print(s)","}"], choices:["where","if","filter","case"], answer:0, explain:"<code>for x in a where 条件</code> で条件に合う要素だけ回す。" },
-  { unit:"制御の流れ", prompt:"60は飛ばし、90超で止めます。①②は？", code:["if s == 60 { ① }","if s > 90 { ② }"], choices:["① continue  ② break","① break  ② continue","① skip  ② stop","① return  ② break"], answer:0, explain:"<code>continue</code>=その回を飛ばす、<code>break</code>=ループを抜ける。" },
-  { unit:"switch", prompt:"80以上90未満の case の空欄は？", code:["switch t {","case @@: print(\"B\")","default: print(\"C\")","}"], choices:["80..<90","80...90","80,90","80 <= 90"], answer:0, explain:"<code>80..<90</code>（90を含まない）。case に範囲を直接書ける。" },
-  { unit:"辞書", prompt:"名前→点数の辞書を型注釈付きで宣言。空欄の型は？", code:["let scoreOf: @@ = [:]"], choices:["[String: Int]","[String, Int]","Map<String, Int>","{String: Int}"], answer:0, explain:"辞書型は <code>[キー型: 値型]</code>。<code>[String: Int]</code>。" },
-  { unit:"Optional", prompt:"辞書の添字が返す型は？", code:['let v = scoreOf["太郎"]',"// v の型は？"], choices:["Int?","Int","Optional","[Int]"], answer:0, explain:"キーが無いかもしれないので <code>Int?</code> を返す。" },
-  { unit:"Optional", prompt:"未受験の点数を Int の Optional で宣言。①②は？", code:["var retake: ① = ②"], choices:["① Int?  ② nil","① Int  ② 0","① Int?  ② null","① Optional  ② empty"], answer:0, explain:"<code>Int?</code> と <code>nil</code>。null ではない。" },
-  { unit:"Optional", prompt:"値があるときだけ中に入り score で使う。空欄は？", code:["@@ score = scoreOf[\"太郎\"] {","  print(score)","}"], choices:["if let","if","while let","let if"], answer:0, explain:"<code>if let 名前 = Optional</code> で安全に取り出す。" },
-  { unit:"Optional", prompt:"名簿に無い人を 0 点扱いにする演算子は？", code:['let s = scoreOf["鈴木"] @@ 0'], choices:["??","?:","||","!!"], answer:0, explain:"<code>??</code> は左が nil のとき右の既定値を使う。" },
-  { unit:"Optional", prompt:"関数先頭で値が無ければ早期 return。空欄は？", code:["@@ score = table[name] else {",'  return "なし"',"}"], choices:["guard let","if let","guard","let guard"], answer:0, explain:"<code>guard let 名前 = Optional else { return }</code>。" },
-  { unit:"Optional", prompt:"<code>!</code> で開いた中身が nil のとき何が起きる？", code:['let x = scoreOf["鈴木"]!'], choices:["実行時にクラッシュして止まる","nil が代入される","0 が代入される","コンパイルできない"], answer:0, explain:"nil だと <code>Fatal error</code> で実行時クラッシュ。! は使わない。" }
+  { unit:"型と制御構文", prompt:"定数 passingScore に Int 型を型注釈付きで宣言します。空欄は？", code:["let passingScore@@ 60"], choices:[": Int =","= Int:",": Int ->","as Int ="], answer:0, hint:"「名前 コロン 型 イコール 値」の順。型は Int。", explain:"型注釈は <code>名前: 型</code>。<code>let passingScore: Int = 60</code>。" },
+  { unit:"型変換", prompt:"passingScore(Int) を Double にして引き算します。", code:["let targetAverage = 75.5",'print(targetAverage - @@)'], choices:["Double(passingScore)","passingScore.toDouble()","(Double)passingScore","passingScore as Double"], answer:0, hint:"変換先の型を関数のように書いて包む。", explain:"Swift に暗黙の型変換はなく <code>Double(passingScore)</code> と書きます。" },
+  { unit:"配列", prompt:"配列 scores の要素数を取り出します。", code:['print(scores@@)'], choices:[".count",".length",".size()",".length()"], answer:0, hint:"Java の length/size() とは違うプロパティ1語。", explain:"要素数は <code>.count</code>（Java の length/size() とは違う）。" },
+  { unit:"配列", prompt:"もとを変えず降順に並べ替えた新しい配列を得ます。", code:["let ranking = scores@@"], choices:[".sorted(by: >)",".sort(by: >)",".sorted(>: by)",".reverse()"], answer:0, hint:"新しい配列を返すのは過去分詞形(-ed)。", explain:"<code>sorted(by:)</code> は新しい配列を返す。() なしの <code>sort()</code> は破壊的。" },
+  { unit:"範囲と繰り返し", prompt:"添字 i を 0 から count の手前まで回します。", code:["for i in @@ {","  print(names[i])","}"], choices:["0..<names.count","0...names.count","0, names.count","0 to names.count"], answer:0, hint:"末尾を含まない範囲演算子を使う。", explain:"<code>0..<n</code> は末尾を含まない。<code>0...n</code> は n を含み範囲外に。" },
+  { unit:"範囲と繰り返し", prompt:"合格点(60以上)の要素だけを if なしで処理します。", code:["for s in scores @@ s >= 60 {","  print(s)","}"], choices:["where","if","filter","case"], answer:0, hint:"「〜のとき」を表す英単語1語。", explain:"<code>for x in a where 条件</code> で条件に合う要素だけ回す。" },
+  { unit:"制御の流れ", prompt:"60は飛ばし、90超で止めます。①②は？", code:["if s == 60 { ① }","if s > 90 { ② }"], choices:["① continue  ② break","① break  ② continue","① skip  ② stop","① return  ② break"], answer:0, hint:"①はその回だけスキップ、②はループ終了。", explain:"<code>continue</code>=その回を飛ばす、<code>break</code>=ループを抜ける。" },
+  { unit:"switch", prompt:"80以上90未満の case の空欄は？", code:["switch t {","case @@: print(\"B\")","default: print(\"C\")","}"], choices:["80..<90","80...90","80,90","80 <= 90"], answer:0, hint:"90 を含めない範囲演算子。", explain:"<code>80..<90</code>（90を含まない）。case に範囲を直接書ける。" },
+  { unit:"辞書", prompt:"名前→点数の辞書を型注釈付きで宣言。空欄の型は？", code:["let scoreOf: @@ = [:]"], choices:["[String: Int]","[String, Int]","Map<String, Int>","{String: Int}"], answer:0, hint:"角括弧に「キー型 コロン 値型」。", explain:"辞書型は <code>[キー型: 値型]</code>。<code>[String: Int]</code>。" },
+  { unit:"Optional", prompt:"辞書の添字が返す型は？", code:['let v = scoreOf["太郎"]',"// v の型は？"], choices:["Int?","Int","Optional","[Int]"], answer:0, hint:"キーが無いかもしれないので ? が付く。", explain:"キーが無いかもしれないので <code>Int?</code> を返す。" },
+  { unit:"Optional", prompt:"未受験の点数を Int の Optional で宣言。①②は？", code:["var retake: ① = ②"], choices:["① Int?  ② nil","① Int  ② 0","① Int?  ② null","① Optional  ② empty"], answer:0, hint:"①は ? 付きの型、②は「値が無い」を表す語。", explain:"<code>Int?</code> と <code>nil</code>。null ではない。" },
+  { unit:"Optional", prompt:"値があるときだけ中に入り score で使う。空欄は？", code:["@@ score = scoreOf[\"太郎\"] {","  print(score)","}"], choices:["if let","if","while let","let if"], answer:0, hint:"if と組み合わせて Optional を開く2語。", explain:"<code>if let 名前 = Optional</code> で安全に取り出す。" },
+  { unit:"Optional", prompt:"名簿に無い人を 0 点扱いにする演算子は？", code:['let s = scoreOf["鈴木"] @@ 0'], choices:["??","?:","||","!!"], answer:0, hint:"クエスチョンマーク2つの演算子。", explain:"<code>??</code> は左が nil のとき右の既定値を使う。" },
+  { unit:"Optional", prompt:"関数先頭で値が無ければ早期 return。空欄は？", code:["@@ score = table[name] else {",'  return "なし"',"}"], choices:["guard let","if let","guard","let guard"], answer:0, hint:"「守る」意味の語 + let。", explain:"<code>guard let 名前 = Optional else { return }</code>。" },
+  { unit:"Optional", prompt:"<code>!</code> で開いた中身が nil のとき何が起きる？", code:['let x = scoreOf["鈴木"]!'], choices:["実行時にクラッシュして止まる","nil が代入される","0 が代入される","コンパイルできない"], answer:0, hint:"! は「絶対中身がある」という宣言。実際は…？", explain:"nil だと <code>Fatal error</code> で実行時クラッシュ。! は使わない。" }
 ];
 
 /* ===== ユーティリティ ===== */
@@ -253,6 +263,9 @@ let unsubRoom=null, unsubPlayers=null, unsubAnswers=null;
 let answersCache={};               // uid -> answer data（ホストのみ購読）
 let myAnsweredQ=-1;                 // 自分が回答済みの qIndex
 let hostTimer=null, scoring=false, countTimer=null;
+let qShownAt=0;                    // この端末で今の問題を表示した時刻（個別カウント用）
+let hintUsedThisQ=false;           // 今の問題でヒントを開いたか
+const LAG_BUFFER=6000;             // 表示ラグを見込んだ締め切りの猶予(ms)
 
 function isHost(){ return room && uid===room.hostUid; }
 function curQuestion(){ return room && room.order ? QUESTIONS[room.order[room.qIndex]] : null; }
@@ -322,6 +335,8 @@ function renderQuiz(){
   // 問題が変わったら選択肢を作り直す
   if(lastRenderedQ!==room.qIndex){
     lastRenderedQ=room.qIndex;
+    qShownAt=Date.now();          // この端末が問題を表示した瞬間からカウント開始
+    hintUsedThisQ=false;
     $("qUnit").textContent=q.unit;
     $("qNo").textContent=`第 ${room.qIndex+1} 問 / ${room.order.length}`;
     $("qPrompt").innerHTML=q.prompt;
@@ -333,6 +348,15 @@ function renderQuiz(){
       b.addEventListener("click",()=>submitAnswer(i,b));
       box.append(b);
     });
+    // ヒント初期化
+    const hintBtn=$("hintBtn"), hintBox=$("hintBox");
+    hintBox.hidden=true; hintBtn.disabled=false;
+    hintBtn.textContent="💡 ヒントを見る（この問題の得点は半分に）";
+    hintBtn.onclick=()=>{
+      hintUsedThisQ=true;
+      hintBox.innerHTML='<div class="head">ヒント</div>'+q.hint+'<div class="hint-warn">このヒントを見たので、正解しても得点は半分になります。</div>';
+      hintBox.hidden=false; hintBtn.disabled=true;
+    };
     $("answeredMsg").hidden = (myAnsweredQ===room.qIndex) ? false : true;
     // 既に回答済みなら固定
     if(myAnsweredQ===room.qIndex){ lockChoices(); }
@@ -342,12 +366,13 @@ function renderQuiz(){
 
 function lockChoices(){
   document.querySelectorAll("#qChoices .choice").forEach(b=>b.disabled=true);
+  $("hintBtn").disabled=true;
   $("answeredMsg").hidden=false;
 }
 
 function startCountdown(){
   if(countTimer) clearInterval(countTimer);
-  const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
+  const startMs = qShownAt || Date.now();   // 各自が問題を見た時刻からカウント
   const endMs = startMs + DURATION*1000;
   const tick=()=>{
     const left=Math.max(0, endMs-Date.now());
@@ -365,7 +390,8 @@ function renderReveal(){
   const youEl=$("youResult");
   if(mine){
     youEl.className = "you "+(mine.correct?"ok":"ng");
-    youEl.innerHTML = mine.correct ? `◎ 正解！ <span class="pts">+${mine.points}</span>` : "✕ 不正解  <span class=\"pts\">+0</span>";
+    const hintNote = mine.hintUsed ? '<span class="hint-warn">（ヒント使用で半減）</span>' : "";
+    youEl.innerHTML = mine.correct ? `◎ 正解！ <span class="pts">+${mine.points}</span> ${hintNote}` : "✕ 不正解  <span class=\"pts\">+0</span>";
   } else { youEl.className="you"; youEl.textContent="（未回答）"; }
   $("correctLine").innerHTML = `正解は <b>${"ABCD"[q.answer]}</b> : <code style="font-family:var(--font-code)">${esc(q.choices[q.answer])}</code>`;
   $("revealExplain").innerHTML = q.explain;
@@ -386,13 +412,15 @@ function renderFinish(){
 /* ===== 回答送信（自分の分だけ書く） ===== */
 async function submitAnswer(choice, btn){
   if(myAnsweredQ===room.qIndex) return;
-  const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
-  if(Date.now() > startMs + DURATION*1000) { return; } // 時間切れ
+  const startMs = qShownAt || Date.now();
+  const elapsedMs = Date.now() - startMs;     // 各自の表示からの経過時間
+  if(elapsedMs > DURATION*1000) { return; }   // 自分の時間切れ
   myAnsweredQ=room.qIndex;
   btn.classList.add("picked");
   lockChoices();
   try{
-    await setDoc(doc(db,COL,roomCode,"answers",uid), { qIndex:room.qIndex, choice, answeredAt:serverTimestamp() });
+    await setDoc(doc(db,COL,roomCode,"answers",uid),
+      { qIndex:room.qIndex, choice, elapsedMs, hintUsed:hintUsedThisQ, answeredAt:serverTimestamp() });
   }catch(e){ say("回答の送信に失敗: "+e.message); }
 }
 
@@ -409,7 +437,8 @@ function stopHostWatch(){ if(unsubAnswers){ unsubAnswers(); unsubAnswers=null; }
 function scheduleAutoEnd(){
   if(hostTimer) clearTimeout(hostTimer);
   const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
-  const wait = Math.max(0, startMs + DURATION*1000 - Date.now()) + 400;
+  // 表示ラグのある参加者にも回答時間を残すため、締め切りに猶予を足す
+  const wait = Math.max(0, startMs + DURATION*1000 + LAG_BUFFER - Date.now()) + 400;
   hostTimer=setTimeout(()=>maybeFinishQuestion(true), wait);
 }
 
@@ -431,16 +460,20 @@ async function finishQuestion(){
     const batch=writeBatch(db);
     for(const p of players){
       const a=answersCache[p.uid];
-      let correct=false, points=0;
+      let correct=false, points=0, hintUsed=false;
       if(a && a.qIndex===room.qIndex){
         correct = a.choice===q.answer;
+        hintUsed = !!a.hintUsed;
         if(correct){
-          const ansMs = a.answeredAt && a.answeredAt.toMillis ? a.answeredAt.toMillis() : startMs;
-          const frac = Math.min(1, Math.max(0, (ansMs-startMs)/(DURATION*1000)));
+          // 各自の表示からの経過時間で速さボーナスを計算（表示ラグの影響を受けない）
+          let elapsed = (typeof a.elapsedMs==="number") ? a.elapsedMs
+            : ((a.answeredAt && a.answeredAt.toMillis ? a.answeredAt.toMillis() : startMs) - startMs);
+          const frac = Math.min(1, Math.max(0, elapsed/(DURATION*1000)));
           points = BASE + Math.round(SPEED*(1-frac));
+          if(hintUsed) points = Math.round(points/2);   // ヒントを見たら半減
         }
       }
-      results.push({ uid:p.uid, name:p.name, correct, points, choice:(a&&a.qIndex===room.qIndex)?a.choice:-1 });
+      results.push({ uid:p.uid, name:p.name, correct, points, hintUsed, choice:(a&&a.qIndex===room.qIndex)?a.choice:-1 });
       if(points>0) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:(p.score||0)+points });
     }
     batch.update(doc(db,COL,roomCode), { status:"reveal", reveal:{ qIndex:room.qIndex, results } });
