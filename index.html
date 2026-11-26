@@ -155,7 +155,55 @@
       <label>部屋コードで参加</label>
       <input id="codeInput" inputmode="numeric" maxlength="4" placeholder="----" autocomplete="off">
       <button id="joinBtn" class="accent2">番号を入力して参加</button>
+      <hr>
+      <button id="practiceBtn" class="sub">🎯 ひとりで練習</button>
       <button id="backNameBtn" class="sub" style="margin-top:10px">名前を変える</button>
+    </div>
+  </section>
+
+  <!-- ひとりで練習 -->
+  <section id="practice" hidden>
+    <!-- 設定 -->
+    <div class="card" id="pSetup">
+      <strong>ひとりで練習</strong>
+      <div class="range-label muted" style="margin-top:12px">出題範囲</div>
+      <div class="range-toggle" id="pRangeToggle">
+        <button data-range="swift" class="on">Swift文法</button>
+        <button data-range="fe">基本情報</button>
+        <button data-range="mix">ミックス</button>
+      </div>
+      <div class="range-label muted" style="margin-top:12px">問題数</div>
+      <div class="range-toggle" id="pCountToggle">
+        <button data-count="5">5問</button>
+        <button data-count="10" class="on">10問</button>
+        <button data-count="15">15問</button>
+        <button data-count="all">全問</button>
+      </div>
+      <p class="muted" id="pInfo" style="margin:8px 0 0;font-size:.72rem"></p>
+      <button id="pStartBtn" style="margin-top:14px">スタート</button>
+      <button id="pBackBtn" class="sub" style="margin-top:10px">戻る</button>
+    </div>
+    <!-- 出題 -->
+    <div class="card" id="pQuiz" hidden>
+      <div class="qmeta">
+        <span class="tag" id="pUnit"></span>
+        <span class="qn" id="pNo"></span>
+      </div>
+      <p class="prompt" id="pPrompt"></p>
+      <pre class="code" id="pCode"></pre>
+      <div class="choices" id="pChoices"></div>
+      <div id="pExplainSlot"></div>
+      <div class="actions" id="pActions" hidden><button id="pNextBtn">次へ</button></div>
+    </div>
+    <!-- 結果 -->
+    <div class="card result" id="pResult" hidden>
+      <div class="big" id="pScoreBig"></div>
+      <div class="sub" id="pScoreSub"></div>
+      <div class="msg" id="pScoreMsg"></div>
+      <div class="row" style="margin-top:14px">
+        <button id="pAgainBtn" class="sub">もう一度</button>
+        <button id="pHomeBtn">ロビーへ</button>
+      </div>
     </div>
   </section>
 
@@ -348,14 +396,96 @@ let selectedRange = "swift";   // ホストが選ぶ出題範囲
 let selectedCount = 10;        // ホストが選ぶ問題数（数値 or "all"）
 
 /* ===== 画面切替 ===== */
-function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; }
+function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("practice").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; }
 function gotoChoice(){
   const n=getName(); if(!n) return;
   $("hello").textContent="ようこそ、"+n+" さん";
   $("lobbyName").hidden=true; $("lobbyChoice").hidden=false; say("");
 }
 function backToName(){ $("lobbyChoice").hidden=true; $("lobbyName").hidden=false; }
-function showRoom(){ $("lobby").hidden=true; $("room").hidden=false; }
+function showRoom(){ $("lobby").hidden=true; $("room").hidden=false; $("practice").hidden=true; }
+
+/* ===== ひとりで練習（対戦なし・ローカル完結） ===== */
+let pRange="swift", pCount=10, pOrder=[], pPos=0, pScore=0, pLocked=false, pWired=false;
+function pWantCount(len){ return pCount==="all" ? len : Math.min(pCount, len); }
+function pUpdateInfo(){
+  $("pRangeToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("on", b.dataset.range===pRange));
+  $("pCountToggle").querySelectorAll("button").forEach(b=>{ const v=b.dataset.count==="all"?"all":+b.dataset.count; b.classList.toggle("on", v===pCount); });
+  const pool=rangePool(pRange);
+  const name={swift:"Swift文法",fe:"基本情報(FE)",mix:"ミックス"}[pRange];
+  $("pInfo").textContent=`${name}：全${pool.length}問から${pWantCount(pool.length)}問`;
+}
+function showPractice(){
+  $("lobby").hidden=true; $("room").hidden=true; $("practice").hidden=false;
+  $("pSetup").hidden=false; $("pQuiz").hidden=true; $("pResult").hidden=true;
+  if(!pWired){
+    pWired=true;
+    $("pRangeToggle").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ pRange=b.dataset.range; pUpdateInfo(); }));
+    $("pCountToggle").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ pCount=b.dataset.count==="all"?"all":+b.dataset.count; pUpdateInfo(); }));
+    $("pStartBtn").addEventListener("click",pStart);
+    $("pBackBtn").addEventListener("click",()=>{ showLobby(); $("lobbyChoice").hidden=false; $("lobbyName").hidden=true; });
+    $("pNextBtn").addEventListener("click",pNext);
+    $("pAgainBtn").addEventListener("click",pStart);
+    $("pHomeBtn").addEventListener("click",()=>{ showLobby(); $("lobbyChoice").hidden=false; $("lobbyName").hidden=true; });
+  }
+  pUpdateInfo();
+}
+function pStart(){
+  const pool=rangePool(pRange);
+  if(pool.length===0) return;
+  pOrder=shuffle(pool).slice(0, pWantCount(pool.length));
+  pPos=0; pScore=0;
+  $("pSetup").hidden=true; $("pResult").hidden=true; $("pQuiz").hidden=false;
+  pRenderQuestion();
+}
+function pRenderQuestion(){
+  const q=getQ(pOrder[pPos]); if(!q) return;
+  pLocked=false;
+  $("pUnit").textContent=q.src||q.unit;
+  $("pNo").textContent=`第 ${pPos+1} 問 / ${pOrder.length}`;
+  $("pPrompt").innerHTML=q.prompt;
+  if(q.code && q.code.length){ $("pCode").hidden=false; $("pCode").innerHTML=renderCode(q.code); }
+  else { $("pCode").hidden=true; $("pCode").innerHTML=""; }
+  const box=$("pChoices"); box.replaceChildren();
+  q.choices.forEach((c,i)=>{
+    const b=document.createElement("button");
+    b.className="choice"; b.innerHTML=`<span class="key">${"ABCD"[i]}</span><span class="txt">${esc(c)}</span>`;
+    b.addEventListener("click",()=>pAnswer(i,b,q));
+    box.append(b);
+  });
+  $("pExplainSlot").innerHTML="";
+  $("pActions").hidden=true;
+  window.scrollTo({top:0});
+}
+function pAnswer(picked,btn,q){
+  if(pLocked) return; pLocked=true;
+  const correct=q.answer, isOk=picked===correct;
+  if(isOk) pScore++;
+  document.querySelectorAll("#pChoices .choice").forEach((b,i)=>{
+    b.disabled=true;
+    if(i===correct){ b.classList.add("correct"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">正解</span>'); }
+    else if(i===picked){ b.classList.add("wrong"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">×</span>'); }
+  });
+  let exp="";
+  if(q.explain) exp=q.explain;
+  else if(q.src) exp="出典："+q.src+"（IPA 基本情報技術者試験 過去問）";
+  $("pExplainSlot").innerHTML=`<div class="explain ${isOk?"ok":"ng"}"><div class="head">${isOk?"◎ 正解":"✕ 不正解"}</div>${exp?("<div>"+exp+"</div>"):""}</div>`;
+  $("pNextBtn").textContent = (pPos+1>=pOrder.length) ? "結果を見る" : "次へ";
+  $("pActions").hidden=false;
+}
+function pNext(){
+  pPos++;
+  if(pPos<pOrder.length) pRenderQuestion();
+  else pShowResult();
+}
+function pShowResult(){
+  $("pQuiz").hidden=true; $("pResult").hidden=false;
+  const pct=Math.round(pScore/pOrder.length*100);
+  $("pScoreBig").textContent=`${pScore} / ${pOrder.length}`;
+  $("pScoreSub").textContent=`正答率 ${pct}%`;
+  $("pScoreMsg").textContent = pct===100?"満点！":pct>=80?"よくできました":pct>=60?"合格ライン":"復習してみよう";
+  window.scrollTo({top:0});
+}
 
 /* ===== 参加者/スコア描画 ===== */
 function renderPlayers(){
@@ -782,6 +912,7 @@ async function leaveRoom(){
 $("nameNextBtn").addEventListener("click",gotoChoice);
 $("nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gotoChoice(); } });
 $("backNameBtn").addEventListener("click",backToName);
+$("practiceBtn").addEventListener("click",()=>{ if(getName()) showPractice(); });
 $("createBtn").addEventListener("click",createRoom);
 $("joinBtn").addEventListener("click",joinRoom);
 $("startBtn").addEventListener("click",startMatch);
