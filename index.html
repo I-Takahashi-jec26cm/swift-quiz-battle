@@ -95,6 +95,13 @@
 
   .brand .logo { display:block; width:100%; max-width:360px; height:auto; margin:0 auto; }
   .hello { font-weight:700; margin:0 0 12px; text-align:center; }
+  /* ランキング上位の枠 */
+  .players li.rank1 { border:2px solid #e8b923; background:linear-gradient(0deg,color-mix(in srgb,#e8b923 10%,var(--surface-2)),var(--surface-2)); }
+  .players li.rank2 { border:2px solid #aab2bd; background:linear-gradient(0deg,color-mix(in srgb,#aab2bd 12%,var(--surface-2)),var(--surface-2)); }
+  .players li.rank3 { border:2px solid #cd7f44; background:linear-gradient(0deg,color-mix(in srgb,#cd7f44 10%,var(--surface-2)),var(--surface-2)); }
+  .players li.rank1 .sc { color:#c79700; }
+  .players li.rank2 .sc { color:#8a929d; }
+  .players li.rank3 .sc { color:#b3682f; }
   /* === シンプル仕上げ === */
   .brand h1 { font-weight:800; }
   .brand h1 .vs { color:var(--accent2); }
@@ -174,7 +181,14 @@
           <button data-range="fe">基本情報</button>
           <button data-range="mix">ミックス</button>
         </div>
-        <p class="muted" id="rangeInfo" style="margin:6px 0 0;font-size:.72rem"></p>
+        <div class="range-label muted" style="margin-top:12px">問題数</div>
+        <div class="range-toggle" id="countToggle">
+          <button data-count="5">5問</button>
+          <button data-count="10" class="on">10問</button>
+          <button data-count="15">15問</button>
+          <button data-count="all">全問</button>
+        </div>
+        <p class="muted" id="rangeInfo" style="margin:8px 0 0;font-size:.72rem"></p>
         <p class="muted" id="startHint"></p>
         <button id="startBtn">対戦スタート</button>
       </div>
@@ -325,6 +339,7 @@ const FE_QUESTIONS = (typeof window!=="undefined" && window.FE_QUESTIONS) ? wind
 function getQ(tok){ if(!tok) return null; return tok[0]==="f" ? FE_QUESTIONS[+tok.slice(1)] : QUESTIONS[+tok.slice(1)]; }
 function curQuestion(){ return room && room.order ? getQ(room.order[room.qIndex]) : null; }
 let selectedRange = "swift";   // ホストが選ぶ出題範囲
+let selectedCount = 10;        // ホストが選ぶ問題数（数値 or "all"）
 
 /* ===== 画面切替 ===== */
 function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; }
@@ -351,9 +366,12 @@ function renderPlayers(){
 function renderScoreList(targetId){
   const ranked = players.slice().sort((a,b)=>(b.score||0)-(a.score||0));
   const ul=$(targetId); ul.replaceChildren();
+  const medal=["🥇","🥈","🥉"], mcls=["rank1","rank2","rank3"];
   ranked.forEach((p,i)=>{
     const li=document.createElement("li");
-    const r=document.createElement("span"); r.className="rankno"; r.textContent=(i+1); li.append(r);
+    if(i<3) li.classList.add(mcls[i]);
+    const r=document.createElement("span"); r.className="rankno";
+    r.textContent = i<3 ? medal[i] : (i+1); li.append(r);
     const nm=document.createElement("span"); nm.className="nm"; nm.textContent=p.name;
     li.append(nm);
     if(p.uid===uid){ const t=document.createElement("span"); t.className="tag"; t.textContent="あなた"; li.append(t); }
@@ -402,21 +420,27 @@ function rangePool(range){
 }
 let rangeWired=false;
 function setupRangeToggle(){
-  const tog=$("rangeToggle");
   if(!rangeWired){
     rangeWired=true;
-    tog.querySelectorAll("button").forEach(b=>{
+    $("rangeToggle").querySelectorAll("button").forEach(b=>{
       b.addEventListener("click",()=>{ selectedRange=b.dataset.range; updateRangeUI(); });
+    });
+    $("countToggle").querySelectorAll("button").forEach(b=>{
+      b.addEventListener("click",()=>{ selectedCount = b.dataset.count==="all" ? "all" : +b.dataset.count; updateRangeUI(); });
     });
   }
   updateRangeUI();
 }
+function wantCount(poolLen){ return selectedCount==="all" ? poolLen : Math.min(selectedCount, poolLen); }
 function updateRangeUI(){
   $("rangeToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("on", b.dataset.range===selectedRange));
+  $("countToggle").querySelectorAll("button").forEach(b=>{
+    const v = b.dataset.count==="all" ? "all" : +b.dataset.count;
+    b.classList.toggle("on", v===selectedCount);
+  });
   const pool=rangePool(selectedRange);
   const name={swift:"Swift文法",fe:"基本情報(FE)",mix:"ミックス"}[selectedRange];
-  const n=Math.min(Q_PER_MATCH, pool.length);
-  $("rangeInfo").textContent = `${name}：全${pool.length}問から${n}問を出題`;
+  $("rangeInfo").textContent = `${name}：全${pool.length}問から${wantCount(pool.length)}問を出題`;
 }
 
 let lastRenderedQ=-1;
@@ -618,7 +642,7 @@ async function startMatch(){
   try{
     const pool = rangePool(selectedRange);
     if(pool.length===0){ say("この範囲には問題がありません"); busy=false; return; }
-    const order = shuffle(pool).slice(0, Math.min(Q_PER_MATCH, pool.length));
+    const order = shuffle(pool).slice(0, wantCount(pool.length));
     // スコアをリセット
     const batch=writeBatch(db);
     for(const p of players) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:0 });
