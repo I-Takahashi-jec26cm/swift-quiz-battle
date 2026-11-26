@@ -336,7 +336,13 @@ let lastSig="";                    // 直近に描画した部屋状態のシグ
 function isHost(){ return room && uid===room.hostUid; }
 // 出題バンク（Swift / 基本情報FE）。order はトークン "s3"/"f10" の配列
 const FE_QUESTIONS = (typeof window!=="undefined" && window.FE_QUESTIONS) ? window.FE_QUESTIONS : [];
-function getQ(tok){ if(!tok) return null; return tok[0]==="f" ? FE_QUESTIONS[+tok.slice(1)] : QUESTIONS[+tok.slice(1)]; }
+function getQ(tok){
+  if(tok==null) return null;
+  if(typeof tok==="number") return QUESTIONS[tok];           // 旧形式(数値index)にも対応
+  if(tok[0]==="f") return FE_QUESTIONS[+tok.slice(1)];
+  if(tok[0]==="s") return QUESTIONS[+tok.slice(1)];
+  return QUESTIONS[+tok];
+}
 function curQuestion(){ return room && room.order ? getQ(room.order[room.qIndex]) : null; }
 let selectedRange = "swift";   // ホストが選ぶ出題範囲
 let selectedCount = 10;        // ホストが選ぶ問題数（数値 or "all"）
