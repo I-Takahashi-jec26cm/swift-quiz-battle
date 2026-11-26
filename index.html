@@ -93,6 +93,7 @@
   .cd-num { font-size:7rem; font-weight:900; color:var(--accent); line-height:1; font-variant-numeric:tabular-nums; animation:cdpop .9s ease; }
   @keyframes cdpop { 0%{ transform:scale(.4); opacity:0 } 35%{ transform:scale(1.1); opacity:1 } 100%{ transform:scale(1); opacity:1 } }
 
+  .hello { font-weight:700; margin:0 0 12px; text-align:center; }
   /* === シンプル仕上げ === */
   .brand h1 { font-weight:800; }
   .brand h1 .vs { color:var(--accent2); }
@@ -132,15 +133,21 @@
 
   <!-- ロビー -->
   <section id="lobby" hidden>
-    <div class="card">
+    <!-- 手順1: ニックネーム登録 -->
+    <div class="card" id="lobbyName">
       <label>ニックネーム</label>
       <input id="nameInput" maxlength="12" placeholder="なまえ" autocomplete="off">
-      <button id="createBtn">部屋を作る（ホスト）</button>
+      <button id="nameNextBtn">スタート</button>
     </div>
-    <div class="card">
+    <!-- 手順2: 分岐（部屋を建てる / 番号入力で参加） -->
+    <div class="card" id="lobbyChoice" hidden>
+      <p class="hello" id="hello"></p>
+      <button id="createBtn">部屋を建てる（ホスト）</button>
+      <hr>
       <label>部屋コードで参加</label>
       <input id="codeInput" inputmode="numeric" maxlength="4" placeholder="----" autocomplete="off">
-      <button id="joinBtn" class="accent2">参加する</button>
+      <button id="joinBtn" class="accent2">番号を入力して参加</button>
+      <button id="backNameBtn" class="sub" style="margin-top:10px">名前を変える</button>
     </div>
   </section>
 
@@ -319,7 +326,13 @@ function curQuestion(){ return room && room.order ? getQ(room.order[room.qIndex]
 let selectedRange = "swift";   // ホストが選ぶ出題範囲
 
 /* ===== 画面切替 ===== */
-function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; }
+function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; }
+function gotoChoice(){
+  const n=getName(); if(!n) return;
+  $("hello").textContent="ようこそ、"+n+" さん";
+  $("lobbyName").hidden=true; $("lobbyChoice").hidden=false; say("");
+}
+function backToName(){ $("lobbyChoice").hidden=true; $("lobbyName").hidden=false; }
 function showRoom(){ $("lobby").hidden=true; $("room").hidden=false; }
 
 /* ===== 参加者/スコア描画 ===== */
@@ -735,6 +748,9 @@ async function leaveRoom(){
 }
 
 /* ===== イベント ===== */
+$("nameNextBtn").addEventListener("click",gotoChoice);
+$("nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gotoChoice(); } });
+$("backNameBtn").addEventListener("click",backToName);
 $("createBtn").addEventListener("click",createRoom);
 $("joinBtn").addEventListener("click",joinRoom);
 $("startBtn").addEventListener("click",startMatch);
