@@ -80,6 +80,11 @@
   .choice.correct { border-color:var(--good); background:var(--good-bg); }
   .choice.wrong { border-color:var(--bad); background:var(--bad-bg); }
   .waitmsg { text-align:center; color:var(--muted); font-size:.86rem; margin-top:14px; }
+  /* 出題範囲トグル */
+  .range-label { font-size:.72rem; font-weight:700; margin-bottom:6px; }
+  .range-toggle { display:flex; gap:4px; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:4px; }
+  .range-toggle button { flex:1; border:none; background:none; padding:10px 4px; border-radius:6px; font-family:var(--font-ui); font-weight:700; font-size:.82rem; color:var(--muted); cursor:pointer; }
+  .range-toggle button.on { background:var(--accent); color:#06210f; }
   /* 開始前カウントダウン */
   .cd-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(3px); }
   .cd-inner { text-align:center; }
@@ -168,6 +173,13 @@
       <ul class="players" id="playerList"></ul>
       <div id="hostArea" hidden>
         <hr>
+        <div class="range-label muted">出題範囲</div>
+        <div class="range-toggle" id="rangeToggle">
+          <button data-range="swift" class="on">Swift文法</button>
+          <button data-range="fe">基本情報</button>
+          <button data-range="mix">ミックス</button>
+        </div>
+        <p class="muted" id="rangeInfo" style="margin:6px 0 0;font-size:.72rem"></p>
         <p class="muted" id="startHint"></p>
         <button id="startBtn">対戦スタート</button>
       </div>
@@ -234,6 +246,7 @@
   <p class="footnote">リアルタイム同期は Firebase Firestore（匿名ログイン）。<br>Swift文法 week01・week02 の問題を使用。</p>
 </main>
 
+<script src="fe-questions.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
@@ -312,7 +325,11 @@ let pollTimer=null;                // リアルタイム配信の取りこぼし
 let lastSig="";                    // 直近に描画した部屋状態のシグネチャ
 
 function isHost(){ return room && uid===room.hostUid; }
-function curQuestion(){ return room && room.order ? QUESTIONS[room.order[room.qIndex]] : null; }
+// 出題バンク（Swift / 基本情報FE）。order はトークン "s3"/"f10" の配列
+const FE_QUESTIONS = (typeof window!=="undefined" && window.FE_QUESTIONS) ? window.FE_QUESTIONS : [];
+function getQ(tok){ if(!tok) return null; return tok[0]==="f" ? FE_QUESTIONS[+tok.slice(1)] : QUESTIONS[+tok.slice(1)]; }
+function curQuestion(){ return room && room.order ? getQ(room.order[room.qIndex]) : null; }
+let selectedRange = "swift";   // ホストが選ぶ出題範囲
 
 /* ===== 画面切替 ===== */
 function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; }
@@ -371,7 +388,34 @@ function renderWaiting(){
     const need = MIN_PLAYERS - players.length;
     $("startHint").textContent = need>0 ? `あと${need}人で開始できます` : `${players.length}人で対戦できます`;
     $("startBtn").disabled = busy || players.length<MIN_PLAYERS;
+    setupRangeToggle();
   }
+}
+
+function rangePool(range){
+  const sw = QUESTIONS.map((_,i)=>"s"+i);
+  const fe = FE_QUESTIONS.map((_,i)=>"f"+i);
+  if(range==="fe") return fe;
+  if(range==="mix") return sw.concat(fe);
+  return sw;
+}
+let rangeWired=false;
+function setupRangeToggle(){
+  const tog=$("rangeToggle");
+  if(!rangeWired){
+    rangeWired=true;
+    tog.querySelectorAll("button").forEach(b=>{
+      b.addEventListener("click",()=>{ selectedRange=b.dataset.range; updateRangeUI(); });
+    });
+  }
+  updateRangeUI();
+}
+function updateRangeUI(){
+  $("rangeToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("on", b.dataset.range===selectedRange));
+  const pool=rangePool(selectedRange);
+  const name={swift:"Swift文法",fe:"基本情報(FE)",mix:"ミックス"}[selectedRange];
+  const n=Math.min(Q_PER_MATCH, pool.length);
+  $("rangeInfo").textContent = `${name}：全${pool.length}問から${n}問を出題`;
 }
 
 let lastRenderedQ=-1;
@@ -402,10 +446,12 @@ function renderQuiz(){
     lastRenderedQ=room.qIndex;
     qShownAt=Date.now();          // この端末が問題を表示した瞬間からカウント開始
     hintUsedThisQ=false;
-    $("qUnit").textContent=q.unit;
+    $("qUnit").textContent = q.src || q.unit;
     $("qNo").textContent=`第 ${room.qIndex+1} 問 / ${room.order.length}`;
     $("qPrompt").innerHTML=q.prompt;
-    $("qCode").innerHTML=renderCode(q.code);
+    // コードブロックは Swift 問題のみ
+    if(q.code && q.code.length){ $("qCode").hidden=false; $("qCode").innerHTML=renderCode(q.code); }
+    else { $("qCode").hidden=true; $("qCode").innerHTML=""; }
     const box=$("qChoices"); box.replaceChildren();
     q.choices.forEach((c,i)=>{
       const b=document.createElement("button");
@@ -413,15 +459,18 @@ function renderQuiz(){
       b.addEventListener("click",()=>submitAnswer(i,b));
       box.append(b);
     });
-    // ヒント初期化
-    const hintBtn=$("hintBtn"), hintBox=$("hintBox");
-    hintBox.hidden=true; hintBtn.disabled=false;
-    hintBtn.textContent="💡 ヒントを見る（この問題の得点は半分に）";
-    hintBtn.onclick=()=>{
-      hintUsedThisQ=true;
-      hintBox.innerHTML='<div class="head">ヒント</div>'+q.hint+'<div class="hint-warn">このヒントを見たので、正解しても得点は半分になります。</div>';
-      hintBox.hidden=false; hintBtn.disabled=true;
-    };
+    // ヒント初期化（ヒントのある問題だけ表示）
+    const hintBtn=$("hintBtn"), hintBox=$("hintBox"), hintRow=$("hintRow");
+    hintBox.hidden=true;
+    if(q.hint){
+      hintRow.hidden=false; hintBtn.disabled=false;
+      hintBtn.textContent="💡 ヒントを見る（この問題の得点は半分に）";
+      hintBtn.onclick=()=>{
+        hintUsedThisQ=true;
+        hintBox.innerHTML='<div class="head">ヒント</div>'+q.hint+'<div class="hint-warn">このヒントを見たので、正解しても得点は半分になります。</div>';
+        hintBox.hidden=false; hintBtn.disabled=true;
+      };
+    } else { hintRow.hidden=true; }
     $("answeredMsg").hidden = (myAnsweredQ===room.qIndex) ? false : true;
     // 既に回答済みなら固定
     if(myAnsweredQ===room.qIndex){ lockChoices(); }
@@ -459,7 +508,9 @@ function renderReveal(){
     youEl.innerHTML = mine.correct ? `◎ 正解！ <span class="pts">+${mine.points}</span> ${hintNote}` : "✕ 不正解  <span class=\"pts\">+0</span>";
   } else { youEl.className="you"; youEl.textContent="（未回答）"; }
   $("correctLine").innerHTML = `正解は <b>${"ABCD"[q.answer]}</b> : <code style="font-family:var(--font-code)">${esc(q.choices[q.answer])}</code>`;
-  $("revealExplain").innerHTML = q.explain;
+  if(q.explain){ $("revealExplain").hidden=false; $("revealExplain").innerHTML=q.explain; }
+  else if(q.src){ $("revealExplain").hidden=false; $("revealExplain").textContent="出典："+q.src+"（IPA 基本情報技術者試験 過去問）"; }
+  else { $("revealExplain").hidden=true; $("revealExplain").innerHTML=""; }
   renderScoreList("scoreList");
   const last = (rv.qIndex+1)>=room.order.length;
   $("revealHostArea").hidden = !isHost();
@@ -564,7 +615,9 @@ async function startMatch(){
   if(!isHost() || players.length<MIN_PLAYERS) return;
   busy=true; $("startBtn").disabled=true;
   try{
-    const order = shuffle(QUESTIONS.map((_,i)=>i)).slice(0, Math.min(Q_PER_MATCH, QUESTIONS.length));
+    const pool = rangePool(selectedRange);
+    if(pool.length===0){ say("この範囲には問題がありません"); busy=false; return; }
+    const order = shuffle(pool).slice(0, Math.min(Q_PER_MATCH, pool.length));
     // スコアをリセット
     const batch=writeBatch(db);
     for(const p of players) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:0 });
