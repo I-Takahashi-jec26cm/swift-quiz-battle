@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Swiftクイズ対戦</title>
+<style>
+  :root {
+    --bg:#101522; --surface:#1a2133; --surface-2:#222c42; --line:#303c57;
+    --fg:#eef2f8; --muted:#9aa7bd; --accent:#f05138; --accent2:#7c5cff;
+    --good:#34c77b; --good-bg:#15321f; --bad:#ef5a5a; --bad-bg:#331719;
+    --gold:#ffcf4a; --font-ui:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    --font-code:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--font-ui); line-height:1.6;
+    padding-top:env(safe-area-inset-top,0); padding-bottom:env(safe-area-inset-bottom,0); -webkit-text-size-adjust:100%; }
+  main { max-width:480px; margin:0 auto; padding:22px 16px 60px;
+    padding-left:max(16px,env(safe-area-inset-left,0)); padding-right:max(16px,env(safe-area-inset-right,0)); }
+  .brand { text-align:center; margin:4px 0 20px; }
+  .brand h1 { font-size:1.4rem; margin:0; letter-spacing:.02em; }
+  .brand h1 .vs { color:var(--accent); }
+  .brand p { color:var(--muted); font-size:.78rem; margin:4px 0 0; }
+
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 16px; margin-bottom:14px; }
+  label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:6px; font-weight:700; }
+  input { display:block; width:100%; padding:13px; font-size:16px; border:1.5px solid var(--line);
+    border-radius:11px; background:var(--surface-2); color:var(--fg); margin-bottom:14px; }
+  input:focus { outline:none; border-color:var(--accent); }
+  #codeInput { font-family:var(--font-code); font-size:24px; letter-spacing:8px; text-align:center; }
+  button { width:100%; padding:14px; font-size:1rem; font-weight:800; border:0; border-radius:12px;
+    background:var(--accent); color:#fff; cursor:pointer; font-family:var(--font-ui); }
+  button.sub { background:var(--surface-2); color:var(--fg); border:1px solid var(--line); }
+  button.accent2 { background:var(--accent2); }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; }
+  .row button { flex:1; }
+  hr { border:0; border-top:1px solid var(--line); margin:18px 0; }
+  .muted { color:var(--muted); font-size:.82rem; }
+
+  /* 部屋コード表示 */
+  .room-head { text-align:center; }
+  .room-head .label { color:var(--muted); font-size:.75rem; font-weight:700; }
+  .room-head .code { font-family:var(--font-code); font-size:40px; letter-spacing:10px; font-weight:800; color:var(--accent); line-height:1.1; }
+  .pill { display:inline-block; font-size:.72rem; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--surface-2); border:1px solid var(--line); color:var(--muted); }
+
+  /* 参加者 */
+  .players { list-style:none; padding:0; margin:12px 0 0; display:flex; flex-direction:column; gap:7px; }
+  .players li { display:flex; align-items:center; gap:10px; padding:11px 12px; background:var(--surface-2); border-radius:10px; }
+  .players li .nm { font-weight:700; min-width:0; word-break:break-word; }
+  .players li .tag { font-size:.68rem; color:var(--accent2); font-weight:700; }
+  .players li .sc { margin-left:auto; font-variant-numeric:tabular-nums; font-weight:800; color:var(--gold); }
+  .players li .rankno { flex:none; width:22px; text-align:center; color:var(--muted); font-weight:800; font-variant-numeric:tabular-nums; }
+
+  /* 問題 */
+  .qmeta { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .qmeta .tag { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--accent); background:color-mix(in srgb,var(--accent) 14%,transparent); border-radius:999px; padding:3px 9px; }
+  .qmeta .qn { margin-left:auto; color:var(--muted); font-size:.78rem; font-variant-numeric:tabular-nums; }
+  .timer { height:8px; background:var(--surface-2); border-radius:999px; overflow:hidden; margin-bottom:14px; }
+  .timer i { display:block; height:100%; background:var(--accent); width:100%; transition:width .25s linear; }
+  .prompt { font-weight:700; margin:0 0 12px; }
+  pre.code { background:#0b0f18; color:#e6edf3; font-family:var(--font-code); font-size:.82rem; line-height:1.7;
+    border-radius:11px; padding:13px 14px; overflow-x:auto; margin:0 0 15px; white-space:pre; }
+  pre.code .blank { display:inline-block; min-width:2.4em; text-align:center; color:var(--gold); border-bottom:2px dashed var(--gold); font-weight:700; padding:0 4px; }
+  pre.code .cmt { color:#6b7688; }
+  .choices { display:flex; flex-direction:column; gap:9px; }
+  .choice { display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:var(--surface-2);
+    color:var(--fg); border:1.5px solid var(--line); border-radius:12px; padding:13px; font-family:var(--font-code); font-size:.92rem; cursor:pointer; }
+  .choice .key { flex:none; width:24px; height:24px; display:grid; place-items:center; border-radius:7px; background:var(--surface); border:1px solid var(--line); font-family:var(--font-ui); font-weight:700; font-size:.78rem; color:var(--muted); }
+  .choice .txt { min-width:0; word-break:break-word; }
+  .choice:disabled { cursor:default; }
+  .choice.picked { border-color:var(--accent2); background:color-mix(in srgb,var(--accent2) 16%,transparent); }
+  .choice.correct { border-color:var(--good); background:var(--good-bg); }
+  .choice.wrong { border-color:var(--bad); background:var(--bad-bg); }
+  .waitmsg { text-align:center; color:var(--muted); font-size:.86rem; margin-top:14px; }
+
+  /* リザルト */
+  .result-head { text-align:center; margin-bottom:12px; }
+  .result-head .you { font-size:1.1rem; font-weight:800; }
+  .result-head .you.ok { color:var(--good); }
+  .result-head .you.ng { color:var(--bad); }
+  .result-head .pts { color:var(--gold); font-weight:800; font-variant-numeric:tabular-nums; }
+  .explain { background:var(--surface-2); border:1px solid var(--line); border-radius:11px; padding:11px 12px; font-size:.84rem; margin:12px 0; }
+  .explain code { font-family:var(--font-code); background:color-mix(in srgb,var(--accent) 16%,transparent); padding:1px 5px; border-radius:5px; }
+
+  /* 表彰台 */
+  .podium { text-align:center; }
+  .podium .cup { font-size:3rem; }
+  .podium .win { font-size:1.3rem; font-weight:900; color:var(--gold); margin:4px 0 2px; }
+
+  #msg { text-align:center; color:#ff9a9a; min-height:1.3em; margin-top:10px; font-size:.86rem; }
+  .footnote { text-align:center; color:var(--muted); font-size:.7rem; margin-top:18px; line-height:1.6; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <h1>Swiftクイズ<span class="vs"> VS </span>対戦</h1>
+    <p>スマホで集まって、同時回答・スピード勝負</p>
+  </div>
+
+  <!-- ロビー -->
+  <section id="lobby" hidden>
+    <div class="card">
+      <label>ニックネーム</label>
+      <input id="nameInput" maxlength="12" placeholder="なまえ" autocomplete="off">
+      <button id="createBtn">部屋を作る（ホスト）</button>
+    </div>
+    <div class="card">
+      <label>部屋コードで参加</label>
+      <input id="codeInput" inputmode="numeric" maxlength="4" placeholder="----" autocomplete="off">
+      <button id="joinBtn" class="accent2">参加する</button>
+    </div>
+  </section>
+
+  <!-- 部屋 -->
+  <section id="room" hidden>
+    <div class="card room-head">
+      <div class="label">部屋コード</div>
+      <div class="code" id="roomCode"></div>
+      <div style="margin-top:6px"><span class="pill" id="statusPill">待機中</span></div>
+    </div>
+
+    <!-- 待機中 -->
+    <div class="card" id="waitCard" hidden>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <strong>参加者</strong><span class="muted"><span id="pcount">0</span> / 10</span>
+      </div>
+      <ul class="players" id="playerList"></ul>
+      <div id="hostArea" hidden>
+        <hr>
+        <p class="muted" id="startHint"></p>
+        <button id="startBtn">対戦スタート</button>
+      </div>
+      <p class="muted" id="waitGuest" hidden style="margin-top:12px">ホストの開始を待っています…</p>
+    </div>
+
+    <!-- 出題中 -->
+    <div class="card" id="quizCard" hidden>
+      <div class="qmeta">
+        <span class="tag" id="qUnit"></span>
+        <span class="qn" id="qNo"></span>
+      </div>
+      <div class="timer"><i id="timerBar"></i></div>
+      <p class="prompt" id="qPrompt"></p>
+      <pre class="code" id="qCode"></pre>
+      <div class="choices" id="qChoices"></div>
+      <p class="waitmsg" id="answeredMsg" hidden>回答しました。みんなを待っています…</p>
+    </div>
+
+    <!-- 結果（1問ごと） -->
+    <div class="card" id="revealCard" hidden>
+      <div class="result-head">
+        <div class="you" id="youResult"></div>
+        <div class="muted" id="correctLine"></div>
+      </div>
+      <div class="explain" id="revealExplain"></div>
+      <strong>順位</strong>
+      <ul class="players" id="scoreList"></ul>
+      <div id="revealHostArea" hidden style="margin-top:14px">
+        <button id="nextBtn">次の問題へ</button>
+      </div>
+      <p class="muted" id="revealGuest" hidden style="margin-top:12px;text-align:center">ホストが進めるのを待っています…</p>
+    </div>
+
+    <!-- 最終結果 -->
+    <div class="card podium" id="finishCard" hidden>
+      <div class="cup">🏆</div>
+      <div class="win" id="winnerName"></div>
+      <div class="muted">最終順位</div>
+      <ul class="players" id="finalList" style="text-align:left;margin-top:10px"></ul>
+      <div id="finishHostArea" hidden style="margin-top:14px">
+        <button id="againBtn" class="accent2">もう一度（同じメンバーで）</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:4px">
+      <button id="resetBtn" class="sub" hidden>ロビーに戻す</button>
+      <button id="leaveBtn" class="sub">退出</button>
+    </div>
+  </section>
+
+  <p id="msg"></p>
+  <p class="footnote">リアルタイム同期は Firebase Firestore（匿名ログイン）。<br>Swift文法 week01・week02 の問題を使用。</p>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, getDocs, setDoc, deleteDoc,
+  collection, onSnapshot, query, orderBy, serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+// 人狼と同じ Firebase プロジェクトを再利用（コレクションは quizRooms で分離）
+const firebaseConfig = {
+  apiKey: "AIzaSyDd5kJsAdToZEd4dyTR-OVdsEtVu6N9DHk",
+  authDomain: "jinro-khaos-royale.firebaseapp.com",
+  projectId: "jinro-khaos-royale",
+  storageBucket: "jinro-khaos-royale.firebasestorage.app",
+  messagingSenderId: "49572241774",
+  appId: "1:49572241774:web:652982d47ff7103d18617f"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const COL = "quizRooms";
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 10;
+const Q_PER_MATCH = 10;      // 1試合の問題数（全15問からシャッフルで抽出）
+const DURATION = 20;         // 1問の制限時間（秒）
+const BASE = 500, SPEED = 500;
+
+/* ===== 問題（week01: 型・制御/コレクション, week02: Optional） ===== */
+const QUESTIONS = [
+  { unit:"型と制御構文", prompt:"定数 passingScore に Int 型を型注釈付きで宣言します。空欄は？", code:["let passingScore@@ 60"], choices:[": Int =","= Int:",": Int ->","as Int ="], answer:0, explain:"型注釈は <code>名前: 型</code>。<code>let passingScore: Int = 60</code>。" },
+  { unit:"型変換", prompt:"passingScore(Int) を Double にして引き算します。", code:["let targetAverage = 75.5",'print(targetAverage - @@)'], choices:["Double(passingScore)","passingScore.toDouble()","(Double)passingScore","passingScore as Double"], answer:0, explain:"Swift に暗黙の型変換はなく <code>Double(passingScore)</code> と書きます。" },
+  { unit:"配列", prompt:"配列 scores の要素数を取り出します。", code:['print(scores@@)'], choices:[".count",".length",".size()",".length()"], answer:0, explain:"要素数は <code>.count</code>（Java の length/size() とは違う）。" },
+  { unit:"配列", prompt:"もとを変えず降順に並べ替えた新しい配列を得ます。", code:["let ranking = scores@@"], choices:[".sorted(by: >)",".sort(by: >)",".sorted(>: by)",".reverse()"], answer:0, explain:"<code>sorted(by:)</code> は新しい配列を返す。() なしの <code>sort()</code> は破壊的。" },
+  { unit:"範囲と繰り返し", prompt:"添字 i を 0 から count の手前まで回します。", code:["for i in @@ {","  print(names[i])","}"], choices:["0..<names.count","0...names.count","0, names.count","0 to names.count"], answer:0, explain:"<code>0..<n</code> は末尾を含まない。<code>0...n</code> は n を含み範囲外に。" },
+  { unit:"範囲と繰り返し", prompt:"合格点(60以上)の要素だけを if なしで処理します。", code:["for s in scores @@ s >= 60 {","  print(s)","}"], choices:["where","if","filter","case"], answer:0, explain:"<code>for x in a where 条件</code> で条件に合う要素だけ回す。" },
+  { unit:"制御の流れ", prompt:"60は飛ばし、90超で止めます。①②は？", code:["if s == 60 { ① }","if s > 90 { ② }"], choices:["① continue  ② break","① break  ② continue","① skip  ② stop","① return  ② break"], answer:0, explain:"<code>continue</code>=その回を飛ばす、<code>break</code>=ループを抜ける。" },
+  { unit:"switch", prompt:"80以上90未満の case の空欄は？", code:["switch t {","case @@: print(\"B\")","default: print(\"C\")","}"], choices:["80..<90","80...90","80,90","80 <= 90"], answer:0, explain:"<code>80..<90</code>（90を含まない）。case に範囲を直接書ける。" },
+  { unit:"辞書", prompt:"名前→点数の辞書を型注釈付きで宣言。空欄の型は？", code:["let scoreOf: @@ = [:]"], choices:["[String: Int]","[String, Int]","Map<String, Int>","{String: Int}"], answer:0, explain:"辞書型は <code>[キー型: 値型]</code>。<code>[String: Int]</code>。" },
+  { unit:"Optional", prompt:"辞書の添字が返す型は？", code:['let v = scoreOf["太郎"]',"// v の型は？"], choices:["Int?","Int","Optional","[Int]"], answer:0, explain:"キーが無いかもしれないので <code>Int?</code> を返す。" },
+  { unit:"Optional", prompt:"未受験の点数を Int の Optional で宣言。①②は？", code:["var retake: ① = ②"], choices:["① Int?  ② nil","① Int  ② 0","① Int?  ② null","① Optional  ② empty"], answer:0, explain:"<code>Int?</code> と <code>nil</code>。null ではない。" },
+  { unit:"Optional", prompt:"値があるときだけ中に入り score で使う。空欄は？", code:["@@ score = scoreOf[\"太郎\"] {","  print(score)","}"], choices:["if let","if","while let","let if"], answer:0, explain:"<code>if let 名前 = Optional</code> で安全に取り出す。" },
+  { unit:"Optional", prompt:"名簿に無い人を 0 点扱いにする演算子は？", code:['let s = scoreOf["鈴木"] @@ 0'], choices:["??","?:","||","!!"], answer:0, explain:"<code>??</code> は左が nil のとき右の既定値を使う。" },
+  { unit:"Optional", prompt:"関数先頭で値が無ければ早期 return。空欄は？", code:["@@ score = table[name] else {",'  return "なし"',"}"], choices:["guard let","if let","guard","let guard"], answer:0, explain:"<code>guard let 名前 = Optional else { return }</code>。" },
+  { unit:"Optional", prompt:"<code>!</code> で開いた中身が nil のとき何が起きる？", code:['let x = scoreOf["鈴木"]!'], choices:["実行時にクラッシュして止まる","nil が代入される","0 が代入される","コンパイルできない"], answer:0, explain:"nil だと <code>Fatal error</code> で実行時クラッシュ。! は使わない。" }
+];
+
+/* ===== ユーティリティ ===== */
+const $ = (id)=>document.getElementById(id);
+const say = (t)=>{ $("msg").textContent = t||""; };
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function renderCode(lines){
+  return lines.map(l=>esc(l).replace(/@@/g,'<span class="blank">?</span>').replace(/①/g,'<span class="blank">①</span>').replace(/②/g,'<span class="blank">②</span>').replace(/(\/\/[^\n]*)/g,'<span class="cmt">$1</span>')).join("\n");
+}
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch{ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch{} },
+  remove(k){ try{ localStorage.removeItem(k); }catch{} }
+};
+
+/* ===== 状態 ===== */
+let uid=null, roomCode=null, room=null, players=[], busy=false;
+let unsubRoom=null, unsubPlayers=null, unsubAnswers=null;
+let answersCache={};               // uid -> answer data（ホストのみ購読）
+let myAnsweredQ=-1;                 // 自分が回答済みの qIndex
+let hostTimer=null, scoring=false, countTimer=null;
+
+function isHost(){ return room && uid===room.hostUid; }
+function curQuestion(){ return room && room.order ? QUESTIONS[room.order[room.qIndex]] : null; }
+
+/* ===== 画面切替 ===== */
+function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; }
+function showRoom(){ $("lobby").hidden=true; $("room").hidden=false; }
+
+/* ===== 参加者/スコア描画 ===== */
+function renderPlayers(){
+  $("pcount").textContent = players.length;
+  const ul = $("playerList"); ul.replaceChildren();
+  for(const p of players){
+    const li=document.createElement("li");
+    const nm=document.createElement("span"); nm.className="nm"; nm.textContent=p.name; li.append(nm);
+    const tags=[]; if(p.uid===room.hostUid) tags.push("ホスト"); if(p.uid===uid) tags.push("あなた");
+    if(tags.length){ const t=document.createElement("span"); t.className="tag"; t.textContent=tags.join("・"); li.append(t); }
+    ul.append(li);
+  }
+}
+function renderScoreList(targetId){
+  const ranked = players.slice().sort((a,b)=>(b.score||0)-(a.score||0));
+  const ul=$(targetId); ul.replaceChildren();
+  ranked.forEach((p,i)=>{
+    const li=document.createElement("li");
+    const r=document.createElement("span"); r.className="rankno"; r.textContent=(i+1); li.append(r);
+    const nm=document.createElement("span"); nm.className="nm"; nm.textContent=p.name;
+    li.append(nm);
+    if(p.uid===uid){ const t=document.createElement("span"); t.className="tag"; t.textContent="あなた"; li.append(t); }
+    const sc=document.createElement("span"); sc.className="sc"; sc.textContent=(p.score||0); li.append(sc);
+    ul.append(li);
+  });
+  return ranked;
+}
+
+/* ===== 画面：状態ごと ===== */
+function renderAll(){
+  if(!room) return;
+  const st=room.status;
+  $("statusPill").textContent = st==="waiting"?"待機中":st==="playing"?"対戦中":st==="reveal"?"結果":"終了";
+  $("waitCard").hidden = st!=="waiting";
+  $("quizCard").hidden = st!=="playing";
+  $("revealCard").hidden = st!=="reveal";
+  $("finishCard").hidden = st!=="finished";
+  $("resetBtn").hidden = !(isHost() && st!=="waiting");
+
+  if(st==="waiting") renderWaiting();
+  else if(st==="playing") renderQuiz();
+  else if(st==="reveal") renderReveal();
+  else if(st==="finished") renderFinish();
+}
+
+function renderWaiting(){
+  renderPlayers();
+  $("hostArea").hidden = !isHost();
+  $("waitGuest").hidden = isHost();
+  if(isHost()){
+    const need = MIN_PLAYERS - players.length;
+    $("startHint").textContent = need>0 ? `あと${need}人で開始できます` : `${players.length}人で対戦できます`;
+    $("startBtn").disabled = busy || players.length<MIN_PLAYERS;
+  }
+}
+
+let lastRenderedQ=-1;
+function renderQuiz(){
+  const q=curQuestion(); if(!q) return;
+  // 問題が変わったら選択肢を作り直す
+  if(lastRenderedQ!==room.qIndex){
+    lastRenderedQ=room.qIndex;
+    $("qUnit").textContent=q.unit;
+    $("qNo").textContent=`第 ${room.qIndex+1} 問 / ${room.order.length}`;
+    $("qPrompt").innerHTML=q.prompt;
+    $("qCode").innerHTML=renderCode(q.code);
+    const box=$("qChoices"); box.replaceChildren();
+    q.choices.forEach((c,i)=>{
+      const b=document.createElement("button");
+      b.className="choice"; b.innerHTML=`<span class="key">${"ABCD"[i]}</span><span class="txt">${esc(c)}</span>`;
+      b.addEventListener("click",()=>submitAnswer(i,b));
+      box.append(b);
+    });
+    $("answeredMsg").hidden = (myAnsweredQ===room.qIndex) ? false : true;
+    // 既に回答済みなら固定
+    if(myAnsweredQ===room.qIndex){ lockChoices(); }
+  }
+  startCountdown();
+}
+
+function lockChoices(){
+  document.querySelectorAll("#qChoices .choice").forEach(b=>b.disabled=true);
+  $("answeredMsg").hidden=false;
+}
+
+function startCountdown(){
+  if(countTimer) clearInterval(countTimer);
+  const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
+  const endMs = startMs + DURATION*1000;
+  const tick=()=>{
+    const left=Math.max(0, endMs-Date.now());
+    $("timerBar").style.width = (left/(DURATION*1000)*100)+"%";
+    if(left<=0 && countTimer){ clearInterval(countTimer); countTimer=null; }
+  };
+  tick(); countTimer=setInterval(tick,250);
+}
+
+function renderReveal(){
+  if(countTimer){ clearInterval(countTimer); countTimer=null; }
+  const rv=room.reveal; if(!rv) return;
+  const q=QUESTIONS[room.order[rv.qIndex]];
+  const mine=(rv.results||[]).find(r=>r.uid===uid);
+  const youEl=$("youResult");
+  if(mine){
+    youEl.className = "you "+(mine.correct?"ok":"ng");
+    youEl.innerHTML = mine.correct ? `◎ 正解！ <span class="pts">+${mine.points}</span>` : "✕ 不正解  <span class=\"pts\">+0</span>";
+  } else { youEl.className="you"; youEl.textContent="（未回答）"; }
+  $("correctLine").innerHTML = `正解は <b>${"ABCD"[q.answer]}</b> : <code style="font-family:var(--font-code)">${esc(q.choices[q.answer])}</code>`;
+  $("revealExplain").innerHTML = q.explain;
+  renderScoreList("scoreList");
+  const last = (rv.qIndex+1)>=room.order.length;
+  $("revealHostArea").hidden = !isHost();
+  $("revealGuest").hidden = isHost();
+  if(isHost()) $("nextBtn").textContent = last ? "最終結果を見る" : "次の問題へ";
+}
+
+function renderFinish(){
+  if(countTimer){ clearInterval(countTimer); countTimer=null; }
+  const ranked=renderScoreList("finalList");
+  $("winnerName").textContent = ranked.length ? `優勝：${ranked[0].name}（${ranked[0].score||0}点）` : "";
+  $("finishHostArea").hidden = !isHost();
+}
+
+/* ===== 回答送信（自分の分だけ書く） ===== */
+async function submitAnswer(choice, btn){
+  if(myAnsweredQ===room.qIndex) return;
+  const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
+  if(Date.now() > startMs + DURATION*1000) { return; } // 時間切れ
+  myAnsweredQ=room.qIndex;
+  btn.classList.add("picked");
+  lockChoices();
+  try{
+    await setDoc(doc(db,COL,roomCode,"answers",uid), { qIndex:room.qIndex, choice, answeredAt:serverTimestamp() });
+  }catch(e){ say("回答の送信に失敗: "+e.message); }
+}
+
+/* ===== ホスト：出題ループ ===== */
+function hostWatchAnswers(){
+  if(unsubAnswers) return;
+  unsubAnswers = onSnapshot(collection(db,COL,roomCode,"answers"), (snap)=>{
+    answersCache={}; snap.forEach(d=>answersCache[d.id]=d.data());
+    maybeFinishQuestion();
+  });
+}
+function stopHostWatch(){ if(unsubAnswers){ unsubAnswers(); unsubAnswers=null; } if(hostTimer){ clearTimeout(hostTimer); hostTimer=null; } }
+
+function scheduleAutoEnd(){
+  if(hostTimer) clearTimeout(hostTimer);
+  const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
+  const wait = Math.max(0, startMs + DURATION*1000 - Date.now()) + 400;
+  hostTimer=setTimeout(()=>maybeFinishQuestion(true), wait);
+}
+
+function maybeFinishQuestion(timeUp=false){
+  if(!isHost() || !room || room.status!=="playing" || scoring) return;
+  const answeredForQ = players.filter(p=>{ const a=answersCache[p.uid]; return a && a.qIndex===room.qIndex; });
+  const allAnswered = answeredForQ.length>=players.length;
+  if(!allAnswered && !timeUp) return;
+  finishQuestion();
+}
+
+async function finishQuestion(){
+  if(scoring) return; scoring=true;
+  if(hostTimer){ clearTimeout(hostTimer); hostTimer=null; }
+  try{
+    const q=curQuestion();
+    const startMs = room.qStartAt && room.qStartAt.toMillis ? room.qStartAt.toMillis() : Date.now();
+    const results=[];
+    const batch=writeBatch(db);
+    for(const p of players){
+      const a=answersCache[p.uid];
+      let correct=false, points=0;
+      if(a && a.qIndex===room.qIndex){
+        correct = a.choice===q.answer;
+        if(correct){
+          const ansMs = a.answeredAt && a.answeredAt.toMillis ? a.answeredAt.toMillis() : startMs;
+          const frac = Math.min(1, Math.max(0, (ansMs-startMs)/(DURATION*1000)));
+          points = BASE + Math.round(SPEED*(1-frac));
+        }
+      }
+      results.push({ uid:p.uid, name:p.name, correct, points, choice:(a&&a.qIndex===room.qIndex)?a.choice:-1 });
+      if(points>0) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:(p.score||0)+points });
+    }
+    batch.update(doc(db,COL,roomCode), { status:"reveal", reveal:{ qIndex:room.qIndex, results } });
+    await batch.commit();
+  }catch(e){ say("集計に失敗: "+e.message); }
+  finally{ scoring=false; }
+}
+
+async function nextQuestion(){
+  if(!isHost()) return;
+  const next=room.qIndex+1;
+  try{
+    if(next>=room.order.length){
+      await setDoc(doc(db,COL,roomCode), { status:"finished" }, { merge:true });
+    } else {
+      await setDoc(doc(db,COL,roomCode), { status:"playing", qIndex:next, qStartAt:serverTimestamp(), reveal:null }, { merge:true });
+    }
+  }catch(e){ say("進行に失敗: "+e.message); }
+}
+
+/* ===== ホスト操作 ===== */
+async function startMatch(){
+  if(!isHost() || players.length<MIN_PLAYERS) return;
+  busy=true; $("startBtn").disabled=true;
+  try{
+    const order = shuffle(QUESTIONS.map((_,i)=>i)).slice(0, Math.min(Q_PER_MATCH, QUESTIONS.length));
+    // スコアをリセット
+    const batch=writeBatch(db);
+    for(const p of players) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:0 });
+    batch.update(doc(db,COL,roomCode), { status:"playing", order, qIndex:0, qStartAt:serverTimestamp(), reveal:null });
+    await batch.commit();
+  }catch(e){ say("開始に失敗: "+e.message); }
+  finally{ busy=false; }
+}
+
+async function resetToLobby(){
+  if(!isHost()) return;
+  try{
+    // answers を掃除
+    const ans=await getDocs(collection(db,COL,roomCode,"answers"));
+    const batch=writeBatch(db);
+    ans.forEach(d=>batch.delete(d.ref));
+    for(const p of players) batch.update(doc(db,COL,roomCode,"players",p.uid), { score:0 });
+    batch.update(doc(db,COL,roomCode), { status:"waiting", order:null, qIndex:0, reveal:null });
+    await batch.commit();
+    myAnsweredQ=-1; lastRenderedQ=-1;
+  }catch(e){ say("失敗: "+e.message); }
+}
+
+/* ===== 部屋 入退室 ===== */
+function getName(){
+  const n=$("nameInput").value.trim();
+  if(!n){ say("ニックネームを入力してください"); return null; }
+  store.set("quizName",n); return n;
+}
+
+async function createRoom(){
+  say(""); const name=getName(); if(!name) return;
+  busy=true; $("createBtn").disabled=true;
+  try{
+    for(let i=0;i<10;i++){
+      const code=String(Math.floor(1000+Math.random()*9000));
+      const ref=doc(db,COL,code);
+      if((await getDoc(ref)).exists()) continue;
+      await setDoc(ref,{ hostUid:uid, status:"waiting", qIndex:0, createdAt:serverTimestamp() });
+      await setDoc(doc(db,COL,code,"players",uid),{ name, score:0, joinedAt:serverTimestamp() });
+      enterRoom(code); return;
+    }
+    say("部屋を作れませんでした。もう一度お試しください。");
+  }catch(e){ say("失敗: "+e.message); }
+  finally{ busy=false; $("createBtn").disabled=false; }
+}
+
+async function joinRoom(){
+  say(""); const name=getName(); if(!name) return;
+  const code=$("codeInput").value.trim();
+  if(!/^\d{4}$/.test(code)){ say("部屋コードは4桁の数字です"); return; }
+  busy=true; $("joinBtn").disabled=true;
+  try{
+    const snap=await getDoc(doc(db,COL,code));
+    if(!snap.exists()){ say("その部屋は見つかりません"); return; }
+    const pref=doc(db,COL,code,"players",uid);
+    const already=(await getDoc(pref)).exists();
+    if(!already){
+      if(snap.data().status!=="waiting"){ say("この部屋はもう始まっています"); return; }
+      const ps=await getDocs(collection(db,COL,code,"players"));
+      if(ps.size>=MAX_PLAYERS){ say("満員です"); return; }
+      await setDoc(pref,{ name, score:0, joinedAt:serverTimestamp() });
+    }
+    enterRoom(code);
+  }catch(e){ say("失敗: "+e.message); }
+  finally{ busy=false; $("joinBtn").disabled=false; }
+}
+
+function stopAll(){
+  if(unsubRoom){ unsubRoom(); unsubRoom=null; }
+  if(unsubPlayers){ unsubPlayers(); unsubPlayers=null; }
+  stopHostWatch();
+  if(countTimer){ clearInterval(countTimer); countTimer=null; }
+  room=null; players=[]; answersCache={}; myAnsweredQ=-1; lastRenderedQ=-1; scoring=false;
+}
+
+function enterRoom(code){
+  stopAll();
+  roomCode=code; store.set("quizRoom",code);
+  $("roomCode").textContent=code; showRoom();
+
+  unsubRoom=onSnapshot(doc(db,COL,code),(snap)=>{
+    if(!snap.exists()){ say("部屋が見つかりません"); return; }
+    const prevStatus = room && room.status, prevQ = room && room.qIndex;
+    room=snap.data();
+    // 問題が切り替わったら回答状態リセット
+    if(room.status==="playing" && (prevStatus!=="playing" || prevQ!==room.qIndex)){
+      myAnsweredQ = (myAnsweredQ===room.qIndex)?room.qIndex:-1;
+      lastRenderedQ=-1;
+    }
+    // ホストの出題ループ制御
+    if(isHost() && room.status==="playing"){ hostWatchAnswers(); scheduleAutoEnd(); }
+    else { stopHostWatch(); }
+    renderAll();
+  },(e)=>say("読み込み失敗: "+e.message));
+
+  const pq=query(collection(db,COL,code,"players"),orderBy("joinedAt"));
+  unsubPlayers=onSnapshot(pq,(snap)=>{
+    players=snap.docs.map(d=>({ uid:d.id, name:d.data().name, score:d.data().score||0 }));
+    if(room) renderAll();
+    // 全員回答した瞬間に締める判定（ホスト）
+    if(isHost() && room && room.status==="playing") maybeFinishQuestion();
+  },(e)=>say("読み込み失敗: "+e.message));
+}
+
+async function leaveRoom(){
+  say(""); const code=roomCode;
+  try{
+    const wasHost=isHost();
+    stopAll();
+    if(code){
+      await deleteDoc(doc(db,COL,code,"players",uid));
+      // ホストが抜けたら部屋ごと片付け（簡易）
+      if(wasHost) await deleteDoc(doc(db,COL,code)).catch(()=>{});
+    }
+  }catch(e){}
+  finally{ store.remove("quizRoom"); roomCode=null; showLobby(); }
+}
+
+/* ===== イベント ===== */
+$("createBtn").addEventListener("click",createRoom);
+$("joinBtn").addEventListener("click",joinRoom);
+$("startBtn").addEventListener("click",startMatch);
+$("nextBtn").addEventListener("click",nextQuestion);
+$("againBtn").addEventListener("click",resetToLobby);
+$("resetBtn").addEventListener("click",resetToLobby);
+$("leaveBtn").addEventListener("click",leaveRoom);
+
+/* ===== 初期化 ===== */
+(async function init(){
+  $("nameInput").value = store.get("quizName")||"";
+  try{
+    await auth.authStateReady();
+    if(!auth.currentUser) await signInAnonymously(auth);
+    uid=auth.currentUser.uid;
+  }catch(e){ say("ログインに失敗しました: "+e.message); return; }
+
+  const saved=store.get("quizRoom");
+  if(saved){
+    try{
+      if((await getDoc(doc(db,COL,saved,"players",uid))).exists()){ enterRoom(saved); return; }
+    }catch{}
+    store.remove("quizRoom");
+  }
+  showLobby();
+})();
+</script>
+</body>
+</html>
