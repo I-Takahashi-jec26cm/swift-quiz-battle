@@ -628,6 +628,18 @@ $("againBtn").addEventListener("click",resetToLobby);
 $("resetBtn").addEventListener("click",resetToLobby);
 $("leaveBtn").addEventListener("click",leaveRoom);
 
+/* ===== 復帰時の再同期（スマホで別アプリに切替→戻ったとき、取りこぼしを防ぐ） ===== */
+async function resyncRoom(){
+  if(!roomCode) return;
+  try{
+    const snap=await getDoc(doc(db,COL,roomCode));
+    if(snap.exists()){ room=snap.data(); lastRenderedQ=-1; if(room) renderAll(); }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) resyncRoom(); });
+window.addEventListener("focus", resyncRoom);
+window.addEventListener("pageshow", resyncRoom);
+
 /* ===== 初期化 ===== */
 (async function init(){
   $("nameInput").value = store.get("quizName")||"";
