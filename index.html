@@ -75,6 +75,12 @@
   .choice.correct { border-color:var(--good); background:var(--good-bg); }
   .choice.wrong { border-color:var(--bad); background:var(--bad-bg); }
   .waitmsg { text-align:center; color:var(--muted); font-size:.86rem; margin-top:14px; }
+  /* 開始前カウントダウン */
+  .cd-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(3px); }
+  .cd-inner { text-align:center; }
+  .cd-label { color:var(--muted); font-weight:700; letter-spacing:.08em; font-size:.9rem; }
+  .cd-num { font-size:7rem; font-weight:900; color:var(--accent); line-height:1; font-variant-numeric:tabular-nums; animation:cdpop .9s ease; }
+  @keyframes cdpop { 0%{ transform:scale(.4); opacity:0 } 35%{ transform:scale(1.1); opacity:1 } 100%{ transform:scale(1); opacity:1 } }
   .hint-row { margin-top:13px; }
   .hint-btn { display:inline-flex; align-items:center; gap:7px; background:none; border:1.5px dashed color-mix(in srgb,var(--gold) 55%,var(--line)); color:var(--gold); border-radius:999px; padding:8px 14px; font-family:var(--font-ui); font-weight:700; font-size:.82rem; cursor:pointer; }
   .hint-btn:disabled { opacity:.5; cursor:default; }
@@ -123,7 +129,7 @@
 
   <!-- 部屋 -->
   <section id="room" hidden>
-    <div class="card room-head">
+    <div class="card room-head" id="roomHead">
       <div class="label">部屋コード</div>
       <div class="code" id="roomCode"></div>
       <div style="margin-top:6px"><span class="pill" id="statusPill">待機中</span></div>
@@ -191,6 +197,13 @@
       <button id="leaveBtn" class="sub">退出</button>
     </div>
   </section>
+
+  <div id="countdown" class="cd-overlay" hidden>
+    <div class="cd-inner">
+      <div class="cd-label">まもなく開始</div>
+      <div class="cd-num" id="countdownNum">3</div>
+    </div>
+  </div>
 
   <p id="msg"></p>
   <p class="footnote">リアルタイム同期は Firebase Firestore（匿名ログイン）。<br>Swift文法 week01・week02 の問題を使用。</p>
@@ -267,6 +280,8 @@ let myAnsweredQ=-1;                 // 自分が回答済みの qIndex
 let hostTimer=null, scoring=false, countTimer=null;
 let qShownAt=0;                    // この端末で今の問題を表示した時刻（個別カウント用）
 let hintUsedThisQ=false;           // 今の問題でヒントを開いたか
+let matchCountdownDone=false;      // 今の試合で開始カウントダウンを済ませたか
+let countdownRunning=false;
 const LAG_BUFFER=6000;             // 表示ラグを見込んだ締め切りの猶予(ms)
 let pollTimer=null;                // リアルタイム配信の取りこぼし対策ポーリング
 let lastSig="";                    // 直近に描画した部屋状態のシグネチャ
@@ -310,6 +325,7 @@ function renderAll(){
   if(!room) return;
   const st=room.status;
   $("statusPill").textContent = st==="waiting"?"待機中":st==="playing"?"対戦中":st==="reveal"?"結果":"終了";
+  $("roomHead").hidden = st!=="waiting";   // 対戦中は部屋コードを隠す
   $("waitCard").hidden = st!=="waiting";
   $("quizCard").hidden = st!=="playing";
   $("revealCard").hidden = st!=="reveal";
@@ -334,8 +350,28 @@ function renderWaiting(){
 }
 
 let lastRenderedQ=-1;
+function runCountdown(){
+  if(countdownRunning) return;
+  countdownRunning=true;
+  const ov=$("countdown"), num=$("countdownNum");
+  let n=3; num.textContent=n; ov.hidden=false;
+  num.style.animation='none'; void num.offsetWidth; num.style.animation='';
+  const iv=setInterval(()=>{
+    n--;
+    if(n>0){ num.textContent=n; num.style.animation='none'; void num.offsetWidth; num.style.animation=''; }
+    else{
+      clearInterval(iv);
+      ov.hidden=true; countdownRunning=false; matchCountdownDone=true;
+      lastRenderedQ=-1;
+      renderQuiz();
+    }
+  },1000);
+}
+
 function renderQuiz(){
   const q=curQuestion(); if(!q) return;
+  // 最初の問題の前に3秒カウントダウン
+  if(room.qIndex===0 && !matchCountdownDone){ runCountdown(); return; }
   // 問題が変わったら選択肢を作り直す
   if(lastRenderedQ!==room.qIndex){
     lastRenderedQ=room.qIndex;
@@ -579,6 +615,8 @@ function stopAll(){
   if(countTimer){ clearInterval(countTimer); countTimer=null; }
   if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
   room=null; players=[]; answersCache={}; myAnsweredQ=-1; lastRenderedQ=-1; scoring=false; lastSig="";
+  matchCountdownDone=false; countdownRunning=false;
+  const ov=document.getElementById("countdown"); if(ov) ov.hidden=true;
 }
 
 function enterRoom(code){
@@ -595,6 +633,8 @@ function enterRoom(code){
       myAnsweredQ = (myAnsweredQ===room.qIndex)?room.qIndex:-1;
       lastRenderedQ=-1;
     }
+    // 新しい試合の開始（待機→対戦, 1問目）ならカウントダウンを出す
+    if(room.status==="playing" && prevStatus!=="playing" && room.qIndex===0){ matchCountdownDone=false; countdownRunning=false; }
     // ホストの出題ループ制御
     if(isHost() && room.status==="playing"){ hostWatchAnswers(); scheduleAutoEnd(); }
     else { stopHostWatch(); }
@@ -655,6 +695,7 @@ async function resyncRoom(){
       myAnsweredQ=(myAnsweredQ===d.qIndex)?d.qIndex:-1;
       lastRenderedQ=-1;
     }
+    if(d.status==="playing" && prevStatus!=="playing" && d.qIndex===0){ matchCountdownDone=false; countdownRunning=false; }
     renderAll();
   }catch(e){}
 }
