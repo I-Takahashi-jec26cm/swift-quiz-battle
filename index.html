@@ -215,9 +215,9 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-// スマホ回線でストリーミング接続がブロックされても onSnapshot が届くよう、
-// ロングポーリングを自動検出で有効化する
-const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+// スマホ回線でストリーミング接続がブロック/中断されても onSnapshot が届くよう、
+// ロングポーリングを強制する
+const db = initializeFirestore(app, { experimentalForceLongPolling: true });
 
 const COL = "quizRooms";
 const MIN_PLAYERS = 2;
@@ -268,6 +268,8 @@ let hostTimer=null, scoring=false, countTimer=null;
 let qShownAt=0;                    // この端末で今の問題を表示した時刻（個別カウント用）
 let hintUsedThisQ=false;           // 今の問題でヒントを開いたか
 const LAG_BUFFER=6000;             // 表示ラグを見込んだ締め切りの猶予(ms)
+let pollTimer=null;                // リアルタイム配信の取りこぼし対策ポーリング
+let lastSig="";                    // 直近に描画した部屋状態のシグネチャ
 
 function isHost(){ return room && uid===room.hostUid; }
 function curQuestion(){ return room && room.order ? QUESTIONS[room.order[room.qIndex]] : null; }
@@ -575,7 +577,8 @@ function stopAll(){
   if(unsubPlayers){ unsubPlayers(); unsubPlayers=null; }
   stopHostWatch();
   if(countTimer){ clearInterval(countTimer); countTimer=null; }
-  room=null; players=[]; answersCache={}; myAnsweredQ=-1; lastRenderedQ=-1; scoring=false;
+  if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+  room=null; players=[]; answersCache={}; myAnsweredQ=-1; lastRenderedQ=-1; scoring=false; lastSig="";
 }
 
 function enterRoom(code){
@@ -596,6 +599,7 @@ function enterRoom(code){
     if(isHost() && room.status==="playing"){ hostWatchAnswers(); scheduleAutoEnd(); }
     else { stopHostWatch(); }
     renderAll();
+    lastSig = room.status+"|"+room.qIndex+"|"+(room.reveal?room.reveal.qIndex+"r":"");
   },(e)=>say("読み込み失敗: "+e.message));
 
   const pq=query(collection(db,COL,code,"players"),orderBy("joinedAt"));
@@ -605,6 +609,10 @@ function enterRoom(code){
     // 全員回答した瞬間に締める判定（ホスト）
     if(isHost() && room && room.status==="playing") maybeFinishQuestion();
   },(e)=>say("読み込み失敗: "+e.message));
+
+  // 取りこぼし対策：数秒ごとに最新状態を取り直す（変化時のみ描画）
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer=setInterval(resyncRoom, 2500);
 }
 
 async function leaveRoom(){
@@ -631,11 +639,23 @@ $("resetBtn").addEventListener("click",resetToLobby);
 $("leaveBtn").addEventListener("click",leaveRoom);
 
 /* ===== 復帰時の再同期（スマホで別アプリに切替→戻ったとき、取りこぼしを防ぐ） ===== */
+// 最新状態を取り直し、変化があったときだけ描画する（タイマーを無駄にリセットしない）
 async function resyncRoom(){
   if(!roomCode) return;
   try{
     const snap=await getDoc(doc(db,COL,roomCode));
-    if(snap.exists()){ room=snap.data(); lastRenderedQ=-1; if(room) renderAll(); }
+    if(!snap.exists()) return;
+    const d=snap.data();
+    const sig = d.status + "|" + d.qIndex + "|" + (d.reveal ? d.reveal.qIndex+"r" : "");
+    if(sig===lastSig) return;
+    lastSig=sig;
+    const prevStatus=room&&room.status, prevQ=room&&room.qIndex;
+    room=d;
+    if(d.status==="playing" && (prevStatus!=="playing" || prevQ!==d.qIndex)){
+      myAnsweredQ=(myAnsweredQ===d.qIndex)?d.qIndex:-1;
+      lastRenderedQ=-1;
+    }
+    renderAll();
   }catch(e){}
 }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) resyncRoom(); });
