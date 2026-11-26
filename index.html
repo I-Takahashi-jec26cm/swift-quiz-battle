@@ -524,7 +524,7 @@ function startCountdown(){
 function renderReveal(){
   if(countTimer){ clearInterval(countTimer); countTimer=null; }
   const rv=room.reveal; if(!rv) return;
-  const q=QUESTIONS[room.order[rv.qIndex]];
+  const q=getQ(room.order[rv.qIndex]);
   const mine=(rv.results||[]).find(r=>r.uid===uid);
   const youEl=$("youResult");
   if(mine){
