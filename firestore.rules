@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Firebase コンソール → Firestore Database → 「ルール」タブに貼って「公開」。
+// 人狼(rooms)とクイズ対戦(quizRooms)の両方を、ログイン済み(匿名でも可)なら使えるようにします。
+// ※フレンドリーな対戦用の緩めの設定です。スコアは誰でも書けるため、
+//   不正防止はホスト集計で担保しています（人狼の役職配布と同じ考え方）。
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 人狼（既存）
+    match /rooms/{code}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Swiftクイズ対戦
+    match /quizRooms/{code}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
