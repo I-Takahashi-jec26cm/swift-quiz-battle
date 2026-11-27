@@ -141,11 +141,39 @@
 
   <!-- ロビー -->
   <section id="lobby" hidden>
-    <!-- 手順1: ニックネーム登録 -->
+    <!-- 手順1: アカウント / ゲスト -->
     <div class="card" id="lobbyName">
-      <label>ニックネーム</label>
-      <input id="nameInput" maxlength="12" placeholder="なまえ" autocomplete="off">
-      <button id="nameNextBtn">スタート</button>
+      <!-- 未ログイン -->
+      <div id="authBox">
+        <strong>アカウント</strong>
+        <p class="muted" style="font-size:.72rem;margin:4px 0 10px">ログインすると、別の端末でも記録（練習成績・習得状況・対戦成績）を引き継げます。</p>
+        <label>ユーザー名</label>
+        <input id="authUser" maxlength="16" placeholder="ユーザー名" autocomplete="off">
+        <label>合言葉</label>
+        <input id="authPass" type="password" maxlength="32" placeholder="あいことば" autocomplete="off">
+        <div class="row">
+          <button id="loginBtn">ログイン</button>
+          <button id="signupBtn" class="accent2">新規登録</button>
+        </div>
+        <p class="muted" style="font-size:.68rem;margin:8px 0 0">※合言葉はハッシュ化して保存しますが、簡易方式のため強固なセキュリティではありません（身内向け）。</p>
+        <hr>
+        <label>アカウントなしで遊ぶ</label>
+        <input id="nameInput" maxlength="12" placeholder="ニックネーム" autocomplete="off">
+        <button id="nameNextBtn" class="sub">ゲストで続ける</button>
+      </div>
+      <!-- ログイン中 -->
+      <div id="loggedBox" hidden>
+        <p class="hello" id="loggedName"></p>
+        <button id="toPlayBtn">プレイする</button>
+        <button id="myPageBtn" class="sub" style="margin-top:10px">📊 記録を見る</button>
+        <button id="logoutBtn" class="sub" style="margin-top:10px">ログアウト</button>
+      </div>
+    </div>
+    <!-- 記録ページ -->
+    <div class="card" id="myPage" hidden>
+      <strong>📊 きろく</strong>
+      <div id="myPageBody" style="margin-top:12px"></div>
+      <button id="myPageBackBtn" class="sub" style="margin-top:14px">戻る</button>
     </div>
     <!-- 手順2: 分岐（部屋を建てる / 番号入力で参加） -->
     <div class="card" id="lobbyChoice" hidden>
@@ -396,7 +424,7 @@ let selectedRange = "swift";   // ホストが選ぶ出題範囲
 let selectedCount = 10;        // ホストが選ぶ問題数（数値 or "all"）
 
 /* ===== 画面切替 ===== */
-function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("practice").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; }
+function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("practice").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; $("myPage").hidden=true; }
 function gotoChoice(){
   const n=getName(); if(!n) return;
   $("hello").textContent="ようこそ、"+n+" さん";
@@ -461,6 +489,7 @@ function pAnswer(picked,btn,q){
   if(pLocked) return; pLocked=true;
   const correct=q.answer, isOk=picked===correct;
   if(isOk) pScore++;
+  saveMastery(pOrder[pPos], isOk);
   document.querySelectorAll("#pChoices .choice").forEach((b,i)=>{
     b.disabled=true;
     if(i===correct){ b.classList.add("correct"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">正解</span>'); }
@@ -484,6 +513,7 @@ function pShowResult(){
   $("pScoreBig").textContent=`${pScore} / ${pOrder.length}`;
   $("pScoreSub").textContent=`正答率 ${pct}%`;
   $("pScoreMsg").textContent = pct===100?"満点！":pct>=80?"よくできました":pct>=60?"合格ライン":"復習してみよう";
+  saveHistory({ date:new Date().toISOString().slice(0,10), range:pRange, score:pScore, total:pOrder.length });
   window.scrollTo({top:0});
 }
 
@@ -672,6 +702,8 @@ function renderReveal(){
   if(q.explain){ $("revealExplain").hidden=false; $("revealExplain").innerHTML=q.explain; }
   else if(q.src){ $("revealExplain").hidden=false; $("revealExplain").textContent="出典："+q.src+"（IPA 基本情報技術者試験 過去問）"; }
   else { $("revealExplain").hidden=true; $("revealExplain").innerHTML=""; }
+  // ログイン中なら習得状況を保存（1問につき1回）
+  if(account && mine && !savedRevealQ.has(rv.qIndex)){ savedRevealQ.add(rv.qIndex); saveMastery(room.order[rv.qIndex], mine.correct); }
   renderScoreList("scoreList");
   const last = (rv.qIndex+1)>=room.order.length;
   $("revealHostArea").hidden = !isHost();
@@ -684,6 +716,13 @@ function renderFinish(){
   const ranked=renderScoreList("finalList");
   $("winnerName").textContent = ranked.length ? `優勝：${ranked[0].name}（${ranked[0].score||0}点）` : "";
   $("finishHostArea").hidden = !isHost();
+  // ログイン中なら対戦成績を保存（1試合につき1回）
+  if(account && !savedFinishMatch){
+    savedFinishMatch=true;
+    const me=players.find(p=>p.uid===uid);
+    const won = ranked.length>0 && ranked[0].uid===uid;
+    saveBattle(me?me.score:0, won);
+  }
 }
 
 /* ===== 回答送信（自分の分だけ書く） ===== */
@@ -873,7 +912,7 @@ function enterRoom(code){
       lastRenderedQ=-1;
     }
     // 新しい試合の開始（待機→対戦, 1問目）ならカウントダウンを出す
-    if(room.status==="playing" && prevStatus!=="playing" && room.qIndex===0){ matchCountdownDone=false; countdownRunning=false; }
+    if(room.status==="playing" && prevStatus!=="playing" && room.qIndex===0){ matchCountdownDone=false; countdownRunning=false; savedRevealQ.clear(); savedFinishMatch=false; }
     // ホストの出題ループ制御
     if(isHost() && room.status==="playing"){ hostWatchAnswers(); scheduleAutoEnd(); }
     else { stopHostWatch(); }
@@ -909,6 +948,110 @@ async function leaveRoom(){
 }
 
 /* ===== イベント ===== */
+/* ===== 簡易アカウント（ユーザー名＋合言葉） ===== */
+let account=null;                 // {username, data}
+const savedRevealQ=new Set();     // 対戦で習得保存済みの qIndex
+let savedFinishMatch=false;       // 対戦成績を保存済みか
+async function sha(s){
+  try{ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sq:"+s));
+    return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+  catch(e){ return "plain:"+s; }
+}
+function userRef(){ return doc(db,"quizUsers",account.username); }
+function validUser(u){ return /^[0-9A-Za-z぀-ヿ一-鿿_\-]{2,16}$/.test(u); }
+
+async function doSignup(){
+  const u=$("authUser").value.trim(), p=$("authPass").value;
+  if(!validUser(u)){ say("ユーザー名は2〜16文字（記号は _ - のみ）"); return; }
+  if(!p){ say("合言葉を入力してください"); return; }
+  try{
+    const ref=doc(db,"quizUsers",u);
+    if((await getDoc(ref)).exists()){ say("そのユーザー名は使われています"); return; }
+    const data={ passHash:await sha(p), createdAt:serverTimestamp(), mastery:{}, battle:{played:0,wins:0,best:0}, history:{} };
+    await setDoc(ref,data);
+    account={username:u,data:data}; onLoggedIn(); say("");
+  }catch(e){ say("登録に失敗: "+e.message); }
+}
+async function doLogin(){
+  const u=$("authUser").value.trim(), p=$("authPass").value;
+  if(!u||!p){ say("ユーザー名と合言葉を入力してください"); return; }
+  try{
+    const snap=await getDoc(doc(db,"quizUsers",u));
+    if(!snap.exists()){ say("ユーザーが見つかりません"); return; }
+    if(snap.data().passHash!==await sha(p)){ say("合言葉が違います"); return; }
+    account={username:u,data:snap.data()}; onLoggedIn(); say("");
+  }catch(e){ say("ログインに失敗: "+e.message); }
+}
+function onLoggedIn(){
+  $("authBox").hidden=true; $("loggedBox").hidden=false;
+  $("loggedName").textContent="ログイン中："+account.username;
+  $("nameInput").value=account.username;
+  $("authPass").value="";
+}
+function logout(){ account=null; $("loggedBox").hidden=true; $("authBox").hidden=false; }
+
+/* 記録の保存 */
+function saveMastery(token, ok){
+  if(!account||!token) return;
+  const val=ok?"mastered":"weak";
+  account.data.mastery=account.data.mastery||{};
+  account.data.mastery[token]=val;
+  setDoc(userRef(),{mastery:{[token]:val}},{merge:true}).catch(()=>{});
+}
+function saveHistory(entry){
+  if(!account) return;
+  const ts=Date.now();
+  account.data.history=account.data.history||{};
+  account.data.history[ts]=entry;
+  setDoc(userRef(),{history:{[ts]:entry}},{merge:true}).catch(()=>{});
+}
+function saveBattle(score, won){
+  if(!account) return;
+  const b=Object.assign({played:0,wins:0,best:0},account.data.battle||{});
+  b.played++; if(won) b.wins++; b.best=Math.max(b.best,score||0);
+  account.data.battle=b;
+  setDoc(userRef(),{battle:b},{merge:true}).catch(()=>{});
+}
+
+/* 記録ページ */
+function renderMyPage(){
+  const d=account.data||{};
+  const total=QUESTIONS.length+FE_QUESTIONS.length;
+  const m=d.mastery||{};
+  const mastered=Object.values(m).filter(v=>v==="mastered").length;
+  const weak=Object.values(m).filter(v=>v==="weak").length;
+  const b=d.battle||{played:0,wins:0,best:0};
+  const hist=Object.entries(d.history||{}).sort((a,b)=>b[0]-a[0]).slice(0,10);
+  const rangeName={swift:"Swift",fe:"基本情報",mix:"ミックス"};
+  let html=`
+    <div class="stats">
+      <div class="stat mastered"><div class="n">${mastered}</div><div class="l">習得済み</div></div>
+      <div class="stat weak"><div class="n">${weak}</div><div class="l">苦手</div></div>
+      <div class="stat untried"><div class="n">${total-mastered-weak}</div><div class="l">未挑戦</div></div>
+    </div>
+    <p class="muted" style="font-size:.78rem;margin:10px 0">対戦成績：<b>${b.wins}勝 / ${b.played}戦</b>　ベスト ${b.best}点</p>
+    <strong style="font-size:.9rem">練習履歴</strong>`;
+  if(hist.length===0){ html+=`<p class="muted" style="font-size:.78rem">まだ記録がありません</p>`; }
+  else{
+    html+=`<ul class="players" style="margin-top:8px">`;
+    for(const [ts,e] of hist){
+      html+=`<li><span class="nm">${esc(e.date||"")} ${rangeName[e.range]||e.range||""}</span><span class="sc">${e.score}/${e.total}</span></li>`;
+    }
+    html+=`</ul>`;
+  }
+  $("myPageBody").innerHTML=html;
+}
+function showMyPage(){ renderMyPage(); $("lobbyName").hidden=true; $("myPage").hidden=false; }
+function hideMyPage(){ $("myPage").hidden=true; $("lobbyName").hidden=false; }
+
+/* アカウント系のイベント */
+$("loginBtn").addEventListener("click",doLogin);
+$("signupBtn").addEventListener("click",doSignup);
+$("logoutBtn").addEventListener("click",logout);
+$("toPlayBtn").addEventListener("click",gotoChoice);
+$("myPageBtn").addEventListener("click",showMyPage);
+$("myPageBackBtn").addEventListener("click",hideMyPage);
+
 $("nameNextBtn").addEventListener("click",gotoChoice);
 $("nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gotoChoice(); } });
 $("backNameBtn").addEventListener("click",backToName);
@@ -938,7 +1081,7 @@ async function resyncRoom(){
       myAnsweredQ=(myAnsweredQ===d.qIndex)?d.qIndex:-1;
       lastRenderedQ=-1;
     }
-    if(d.status==="playing" && prevStatus!=="playing" && d.qIndex===0){ matchCountdownDone=false; countdownRunning=false; }
+    if(d.status==="playing" && prevStatus!=="playing" && d.qIndex===0){ matchCountdownDone=false; countdownRunning=false; savedRevealQ.clear(); savedFinishMatch=false; }
     renderAll();
   }catch(e){}
 }

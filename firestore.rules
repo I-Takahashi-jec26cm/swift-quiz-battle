@@ -17,5 +17,10 @@ service cloud.firestore {
     match /quizRooms/{code}/{document=**} {
       allow read, write: if request.auth != null;
     }
+
+    // 簡易アカウント（ユーザー名＋合言葉）と記録
+    match /quizUsers/{username} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
