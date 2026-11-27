@@ -479,11 +479,12 @@ function showPractice(){
   }
   pUpdateInfo();
 }
+let pSaved=false;
 function pStart(){
   const pool=rangePool(pRange);
   if(pool.length===0) return;
   pOrder=shuffle(pool).slice(0, pWantCount(pool.length));
-  pPos=0; pScore=0;
+  pPos=0; pScore=0; pSaved=false;
   $("pSetup").hidden=true; $("pResult").hidden=true; $("pQuiz").hidden=false;
   pRenderQuestion();
 }
@@ -534,8 +535,11 @@ function pShowResult(){
   $("pScoreBig").textContent=`${pScore} / ${pOrder.length}`;
   $("pScoreSub").textContent=`正答率 ${pct}%`;
   $("pScoreMsg").textContent = pct===100?"満点！":pct>=80?"よくできました":pct>=60?"合格ライン":"復習してみよう";
-  saveHistory({ date:new Date().toISOString().slice(0,10), range:pRange, score:pScore, total:pOrder.length });
-  addPoints(pScore*10, "practice");   // 個人モード：正解数×10pt
+  if(!pSaved){
+    pSaved=true;
+    saveHistory({ date:new Date().toISOString().slice(0,10), range:pRange, score:pScore, total:pOrder.length });
+    addPoints(pScore*10, "practice");   // 個人モード：正解数×10pt
+  }
   window.scrollTo({top:0});
 }
 
