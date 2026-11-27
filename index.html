@@ -95,6 +95,11 @@
 
   .brand .logo { display:block; width:100%; max-width:360px; height:auto; margin:0 auto; }
   .hello { font-weight:700; margin:0 0 12px; text-align:center; }
+  .pt-hero { display:flex; align-items:baseline; justify-content:center; gap:5px; margin:4px 0 2px; }
+  .pt-big { font-size:2.6rem; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1; }
+  .pt-unit { color:var(--muted); font-weight:700; }
+  .pt-breakdown { text-align:center; color:var(--muted); font-size:.74rem; margin-bottom:12px; }
+  .gacha-result { text-align:center; font-weight:800; color:var(--gold); margin:10px 0; font-size:1.3rem; min-height:1.4em; }
   /* ランキング上位の枠 */
   .players li.rank1 { border:2px solid #e8b923; background:linear-gradient(0deg,color-mix(in srgb,#e8b923 10%,var(--surface-2)),var(--surface-2)); }
   .players li.rank2 { border:2px solid #aab2bd; background:linear-gradient(0deg,color-mix(in srgb,#aab2bd 12%,var(--surface-2)),var(--surface-2)); }
@@ -161,13 +166,25 @@
         <input id="nameInput" maxlength="12" placeholder="ニックネーム" autocomplete="off">
         <button id="nameNextBtn" class="sub">ゲストで続ける</button>
       </div>
-      <!-- ログイン中 -->
+      <!-- ログイン中（ホーム） -->
       <div id="loggedBox" hidden>
         <p class="hello" id="loggedName"></p>
+        <div class="pt-hero"><span class="pt-big" id="ptTotal">0</span><span class="pt-unit">pt</span></div>
+        <div class="pt-breakdown" id="ptBreak"></div>
+        <button id="bonusBtn">🎁 ログインボーナス（ガチャ）</button>
+        <div id="gachaResult" class="gacha-result" hidden></div>
+        <button id="rankBtn" class="accent2" style="margin-top:10px">🏆 ランキング</button>
+        <hr>
         <button id="toPlayBtn">プレイする</button>
         <button id="myPageBtn" class="sub" style="margin-top:10px">📊 記録を見る</button>
         <button id="logoutBtn" class="sub" style="margin-top:10px">ログアウト</button>
       </div>
+    </div>
+    <!-- ランキング -->
+    <div class="card" id="rankPage" hidden>
+      <strong>🏆 ポイントランキング</strong>
+      <ul class="players" id="rankList" style="margin-top:12px"></ul>
+      <button id="rankBackBtn" class="sub" style="margin-top:14px">戻る</button>
     </div>
     <!-- 記録ページ -->
     <div class="card" id="myPage" hidden>
@@ -337,7 +354,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   initializeFirestore, doc, getDoc, getDocs, setDoc, deleteDoc,
-  collection, onSnapshot, query, orderBy, serverTimestamp, writeBatch
+  collection, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 // 人狼と同じ Firebase プロジェクトを再利用（コレクションは quizRooms で分離）
@@ -424,7 +441,11 @@ let selectedRange = "swift";   // ホストが選ぶ出題範囲
 let selectedCount = 10;        // ホストが選ぶ問題数（数値 or "all"）
 
 /* ===== 画面切替 ===== */
-function showLobby(){ $("lobby").hidden=false; $("room").hidden=true; $("practice").hidden=true; $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; $("myPage").hidden=true; }
+function showLobby(){
+  $("lobby").hidden=false; $("room").hidden=true; $("practice").hidden=true;
+  $("lobbyName").hidden=false; $("lobbyChoice").hidden=true; $("myPage").hidden=true; $("rankPage").hidden=true;
+  if(account){ $("authBox").hidden=true; $("loggedBox").hidden=false; renderHome(); }
+}
 function gotoChoice(){
   const n=getName(); if(!n) return;
   $("hello").textContent="ようこそ、"+n+" さん";
@@ -451,10 +472,10 @@ function showPractice(){
     $("pRangeToggle").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ pRange=b.dataset.range; pUpdateInfo(); }));
     $("pCountToggle").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ pCount=b.dataset.count==="all"?"all":+b.dataset.count; pUpdateInfo(); }));
     $("pStartBtn").addEventListener("click",pStart);
-    $("pBackBtn").addEventListener("click",()=>{ showLobby(); $("lobbyChoice").hidden=false; $("lobbyName").hidden=true; });
+    $("pBackBtn").addEventListener("click",goHome);
     $("pNextBtn").addEventListener("click",pNext);
     $("pAgainBtn").addEventListener("click",pStart);
-    $("pHomeBtn").addEventListener("click",()=>{ showLobby(); $("lobbyChoice").hidden=false; $("lobbyName").hidden=true; });
+    $("pHomeBtn").addEventListener("click",goHome);
   }
   pUpdateInfo();
 }
@@ -514,6 +535,7 @@ function pShowResult(){
   $("pScoreSub").textContent=`正答率 ${pct}%`;
   $("pScoreMsg").textContent = pct===100?"満点！":pct>=80?"よくできました":pct>=60?"合格ライン":"復習してみよう";
   saveHistory({ date:new Date().toISOString().slice(0,10), range:pRange, score:pScore, total:pOrder.length });
+  addPoints(pScore*10, "practice");   // 個人モード：正解数×10pt
   window.scrollTo({top:0});
 }
 
@@ -722,6 +744,7 @@ function renderFinish(){
     const me=players.find(p=>p.uid===uid);
     const won = ranked.length>0 && ranked[0].uid===uid;
     saveBattle(me?me.score:0, won);
+    addPoints(me?me.score:0, "battle");   // 対戦モード：マッチ得点をptに加算
   }
 }
 
@@ -967,7 +990,7 @@ async function doSignup(){
   try{
     const ref=doc(db,"quizUsers",u);
     if((await getDoc(ref)).exists()){ say("そのユーザー名は使われています"); return; }
-    const data={ passHash:await sha(p), createdAt:serverTimestamp(), mastery:{}, battle:{played:0,wins:0,best:0}, history:{} };
+    const data={ passHash:await sha(p), createdAt:serverTimestamp(), mastery:{}, battle:{played:0,wins:0,best:0}, history:{}, points:0, pb:{practice:0,battle:0,bonus:0}, lastBonus:"" };
     await setDoc(ref,data);
     account={username:u,data:data}; onLoggedIn(); say("");
   }catch(e){ say("登録に失敗: "+e.message); }
@@ -987,6 +1010,83 @@ function onLoggedIn(){
   $("loggedName").textContent="ログイン中："+account.username;
   $("nameInput").value=account.username;
   $("authPass").value="";
+  ensurePoints();
+  renderHome();
+}
+
+/* ===== ポイント / ホーム / ガチャ / ランキング ===== */
+function today(){ return new Date().toISOString().slice(0,10); }
+function ensurePoints(){
+  const d=account.data;
+  if(typeof d.points!=="number") d.points=0;
+  if(!d.pb) d.pb={practice:0,battle:0,bonus:0};
+}
+function addPoints(amt, kind){
+  if(!account || !amt || amt<=0) return;
+  ensurePoints();
+  account.data.points += amt;
+  account.data.pb[kind]=(account.data.pb[kind]||0)+amt;
+  setDoc(userRef(),{points:account.data.points, pb:account.data.pb},{merge:true}).catch(()=>{});
+}
+function renderHome(){
+  if(!account) return;
+  ensurePoints();
+  $("ptTotal").textContent=account.data.points;
+  const b=account.data.pb;
+  $("ptBreak").textContent=`個人 ${b.practice||0} ・ 対戦 ${b.battle||0} ・ ボーナス ${b.bonus||0}`;
+  const claimed = account.data.lastBonus===today();
+  $("bonusBtn").disabled=claimed;
+  $("bonusBtn").textContent = claimed ? "🎁 本日のボーナス受取済み" : "🎁 ログインボーナス（ガチャ）";
+  $("gachaResult").hidden=true; $("gachaResult").textContent="";
+}
+let gachaSpinning=false;
+function claimBonus(){
+  if(!account || gachaSpinning) return;
+  if(account.data.lastBonus===today()) return;
+  const prizes=[100,200,300,500,1000];
+  gachaSpinning=true;
+  const el=$("gachaResult"); el.hidden=false; $("bonusBtn").disabled=true;
+  let n=0;
+  const spin=setInterval(()=>{
+    el.textContent="🎰 "+prizes[Math.floor(Math.random()*prizes.length)]+" pt";
+    if(++n>=14){
+      clearInterval(spin);
+      const win=prizes[Math.floor(Math.random()*prizes.length)];
+      account.data.lastBonus=today();
+      addPoints(win,"bonus");
+      setDoc(userRef(),{lastBonus:today()},{merge:true}).catch(()=>{});
+      el.textContent="🎉 +"+win+" pt!";
+      $("ptTotal").textContent=account.data.points;
+      const b=account.data.pb;
+      $("ptBreak").textContent=`個人 ${b.practice||0} ・ 対戦 ${b.battle||0} ・ ボーナス ${b.bonus||0}`;
+      $("bonusBtn").textContent="🎁 本日のボーナス受取済み";
+      gachaSpinning=false;
+    }
+  },80);
+}
+async function renderRanking(){
+  $("lobbyName").hidden=true; $("rankPage").hidden=false;
+  const ul=$("rankList"); ul.replaceChildren();
+  const li0=document.createElement("li"); li0.innerHTML='<span class="nm">読み込み中…</span>'; ul.append(li0);
+  try{
+    const snap=await getDocs(query(collection(db,"quizUsers"), orderBy("points","desc"), limit(20)));
+    ul.replaceChildren();
+    let i=0;
+    snap.forEach(d=>{
+      const data=d.data(); const liEl=document.createElement("li");
+      if(i<3) liEl.classList.add(["rank1","rank2","rank3"][i]);
+      const r=document.createElement("span"); r.className="rankno"; r.textContent = i<3 ? ["🥇","🥈","🥉"][i] : (i+1); liEl.append(r);
+      const nm=document.createElement("span"); nm.className="nm"; nm.textContent=d.id; liEl.append(nm);
+      if(account && d.id===account.username){ const t=document.createElement("span"); t.className="tag"; t.textContent="あなた"; liEl.append(t); }
+      const sc=document.createElement("span"); sc.className="sc"; sc.textContent=(data.points||0)+" pt"; liEl.append(sc);
+      ul.append(liEl); i++;
+    });
+    if(i===0){ const e=document.createElement("li"); e.innerHTML='<span class="nm">まだランキングがありません</span>'; ul.append(e); }
+  }catch(e){ ul.replaceChildren(); const er=document.createElement("li"); er.innerHTML='<span class="nm">読み込み失敗: '+esc(e.message)+'</span>'; ul.append(er); }
+}
+function goHome(){
+  showLobby();
+  if(!account){ $("lobbyChoice").hidden=false; $("lobbyName").hidden=true; }
 }
 function logout(){ account=null; $("loggedBox").hidden=true; $("authBox").hidden=false; }
 
@@ -1050,7 +1150,10 @@ $("signupBtn").addEventListener("click",doSignup);
 $("logoutBtn").addEventListener("click",logout);
 $("toPlayBtn").addEventListener("click",gotoChoice);
 $("myPageBtn").addEventListener("click",showMyPage);
-$("myPageBackBtn").addEventListener("click",hideMyPage);
+$("myPageBackBtn").addEventListener("click",()=>{ $("myPage").hidden=true; showLobby(); });
+$("bonusBtn").addEventListener("click",claimBonus);
+$("rankBtn").addEventListener("click",renderRanking);
+$("rankBackBtn").addEventListener("click",()=>{ $("rankPage").hidden=true; showLobby(); });
 
 $("nameNextBtn").addEventListener("click",gotoChoice);
 $("nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gotoChoice(); } });
