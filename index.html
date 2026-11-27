@@ -100,6 +100,30 @@
   .pt-unit { color:var(--muted); font-weight:700; }
   .pt-breakdown { text-align:center; color:var(--muted); font-size:.74rem; margin-bottom:12px; }
   .gacha-result { text-align:center; font-weight:800; color:var(--gold); margin:10px 0; font-size:1.3rem; min-height:1.4em; }
+  /* ホーム強化 */
+  .pt-big { text-shadow:0 2px 10px color-mix(in srgb,var(--accent) 25%,transparent); }
+  #bonusBtn:not(:disabled) { animation:bonusPulse 1.6s ease-in-out infinite; background:linear-gradient(135deg,#f6a94b,#e8762f); }
+  @keyframes bonusPulse { 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--gold) 55%,transparent) } 50%{ box-shadow:0 0 0 7px color-mix(in srgb,var(--gold) 0%,transparent) } }
+  /* ガチャ開封オーバーレイ */
+  .gacha-overlay { position:fixed; inset:0; z-index:60; display:grid; place-items:center; background:color-mix(in srgb,var(--bg) 92%,#000); backdrop-filter:blur(4px); }
+  .gacha-stage { text-align:center; padding:24px; }
+  .capsule { font-size:5.2rem; display:inline-block; animation:capShake .5s ease-in-out infinite; }
+  @keyframes capShake { 0%,100%{ transform:rotate(-9deg) translateY(0) } 25%{ transform:rotate(9deg) translateY(-7px) } 50%{ transform:rotate(-7deg) } 75%{ transform:rotate(7deg) } }
+  .capsule.pop { animation:capPop .5s ease forwards; }
+  @keyframes capPop { 0%{ transform:scale(1) } 40%{ transform:scale(1.5) } 100%{ transform:scale(0); opacity:0 } }
+  .gacha-prize { font-size:4rem; font-weight:900; font-variant-numeric:tabular-nums; animation:prizePop .6s cubic-bezier(.2,1.5,.4,1) both; }
+  @keyframes prizePop { 0%{ transform:scale(.2); opacity:0 } 100%{ transform:scale(1); opacity:1 } }
+  .gacha-rarity { font-weight:800; letter-spacing:.12em; margin-top:4px; font-size:.95rem; }
+  .rar-common .gacha-prize, .rar-common .gacha-rarity { color:#9aa3ad; }
+  .rar-rare .gacha-prize, .rar-rare .gacha-rarity { color:#4a90e2; }
+  .rar-legend .gacha-prize { color:var(--gold); text-shadow:0 0 26px color-mix(in srgb,var(--gold) 65%,transparent); }
+  .rar-legend .gacha-rarity { color:var(--gold); }
+  /* 正解演出 */
+  .explain.ok .head.celebrate { animation:okPop .5s cubic-bezier(.2,1.6,.4,1) both; display:inline-flex; }
+  .you.celebrate { animation:okPop .55s cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes okPop { 0%{ transform:scale(.5) } 60%{ transform:scale(1.25) } 100%{ transform:scale(1) } }
+  .choice.wrong.shake { animation:wrongShake .4s ease; }
+  @keyframes wrongShake { 0%,100%{ transform:translateX(0) } 20%{ transform:translateX(-6px) } 40%{ transform:translateX(6px) } 60%{ transform:translateX(-4px) } 80%{ transform:translateX(4px) } }
   /* ランキング上位の枠 */
   .players li.rank1 { border:2px solid #e8b923; background:linear-gradient(0deg,color-mix(in srgb,#e8b923 10%,var(--surface-2)),var(--surface-2)); }
   .players li.rank2 { border:2px solid #aab2bd; background:linear-gradient(0deg,color-mix(in srgb,#aab2bd 12%,var(--surface-2)),var(--surface-2)); }
@@ -337,6 +361,15 @@
     </div>
   </section>
 
+  <div id="gachaOverlay" class="gacha-overlay" hidden>
+    <div class="gacha-stage" id="gachaStage">
+      <div class="capsule" id="capsule">🎁</div>
+      <div class="gacha-prize" id="gachaPrize" hidden></div>
+      <div class="gacha-rarity" id="gachaRarity" hidden></div>
+      <button id="gachaClose" class="sub" hidden style="margin-top:18px;min-width:160px">とじる</button>
+    </div>
+  </div>
+
   <div id="countdown" class="cd-overlay" hidden>
     <div class="cd-inner">
       <div class="cd-label">まもなく開始</div>
@@ -515,12 +548,13 @@ function pAnswer(picked,btn,q){
   document.querySelectorAll("#pChoices .choice").forEach((b,i)=>{
     b.disabled=true;
     if(i===correct){ b.classList.add("correct"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">正解</span>'); }
-    else if(i===picked){ b.classList.add("wrong"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">×</span>'); }
+    else if(i===picked){ b.classList.add("wrong","shake"); b.insertAdjacentHTML("beforeend",'<span class="mark" style="margin-left:auto;font-weight:800">×</span>'); }
   });
   let exp="";
   if(q.explain) exp=q.explain;
   else if(q.src) exp="出典："+q.src+"（IPA 基本情報技術者試験 過去問）";
-  $("pExplainSlot").innerHTML=`<div class="explain ${isOk?"ok":"ng"}"><div class="head">${isOk?"◎ 正解":"✕ 不正解"}</div>${exp?("<div>"+exp+"</div>"):""}</div>`;
+  $("pExplainSlot").innerHTML=`<div class="explain ${isOk?"ok":"ng"}"><div class="head${isOk?" celebrate":""}">${isOk?"◎ 正解":"✕ 不正解"}</div>${exp?("<div>"+exp+"</div>"):""}</div>`;
+  if(isOk) celebrateCorrect();
   $("pNextBtn").textContent = (pPos+1>=pOrder.length) ? "結果を見る" : "次へ";
   $("pActions").hidden=false;
 }
@@ -730,6 +764,8 @@ function renderReveal(){
   else { $("revealExplain").hidden=true; $("revealExplain").innerHTML=""; }
   // ログイン中なら習得状況を保存（1問につき1回）
   if(account && mine && !savedRevealQ.has(rv.qIndex)){ savedRevealQ.add(rv.qIndex); saveMastery(room.order[rv.qIndex], mine.correct); }
+  // 正解演出（1問につき1回）
+  if(mine && mine.correct && revealCelebratedQ!==rv.qIndex){ revealCelebratedQ=rv.qIndex; celebrateCorrect(); const yh=$("youResult"); yh.classList.add("celebrate"); }
   renderScoreList("scoreList");
   const last = (rv.qIndex+1)>=room.order.length;
   $("revealHostArea").hidden = !isHost();
@@ -979,6 +1015,7 @@ async function leaveRoom(){
 let account=null;                 // {username, data}
 const savedRevealQ=new Set();     // 対戦で習得保存済みの qIndex
 let savedFinishMatch=false;       // 対戦成績を保存済みか
+let revealCelebratedQ=-1;         // 対戦の正解演出を出した qIndex
 async function sha(s){
   try{ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sq:"+s));
     return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
@@ -1043,31 +1080,61 @@ function renderHome(){
   $("bonusBtn").textContent = claimed ? "🎁 本日のボーナス受取済み" : "🎁 ログインボーナス（ガチャ）";
   $("gachaResult").hidden=true; $("gachaResult").textContent="";
 }
+/* 紙吹雪（Canvas。中心から放射） */
+function confetti(count, colors){
+  try{
+    const cv=document.createElement("canvas");
+    cv.style.cssText="position:fixed;inset:0;pointer-events:none;z-index:80";
+    cv.width=innerWidth; cv.height=innerHeight; document.body.append(cv);
+    const ctx=cv.getContext("2d"), P=[];
+    const cx=innerWidth/2, cy=innerHeight*0.42;
+    for(let i=0;i<count;i++) P.push({ x:cx+(Math.random()-.5)*140, y:cy, vx:(Math.random()-.5)*11, vy:Math.random()*-13-4, g:.4+Math.random()*.3, s:6+Math.random()*7, c:colors[i%colors.length], rot:Math.random()*6, vr:(Math.random()-.5)*.5 });
+    let t=0; const iv=setInterval(()=>{
+      ctx.clearRect(0,0,cv.width,cv.height); t++;
+      for(const p of P){ p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.6); ctx.restore(); }
+      if(t>80){ clearInterval(iv); cv.remove(); }
+    },16);
+  }catch(e){}
+}
+
 let gachaSpinning=false;
 function claimBonus(){
   if(!account || gachaSpinning) return;
   if(account.data.lastBonus===today()) return;
-  const prizes=[100,200,300,500,1000];
   gachaSpinning=true;
-  const el=$("gachaResult"); el.hidden=false; $("bonusBtn").disabled=true;
-  let n=0;
-  const spin=setInterval(()=>{
-    el.textContent="🎰 "+prizes[Math.floor(Math.random()*prizes.length)]+" pt";
-    if(++n>=14){
-      clearInterval(spin);
+  const prizes=[100,200,300,500,1000];
+  const ov=$("gachaOverlay"), cap=$("capsule"), prz=$("gachaPrize"), rar=$("gachaRarity"), closeB=$("gachaClose"), stage=$("gachaStage");
+  ov.hidden=false; cap.hidden=false; cap.className="capsule"; prz.hidden=true; rar.hidden=true; closeB.hidden=true; stage.className="gacha-stage";
+  $("bonusBtn").disabled=true;
+  setTimeout(()=>{                       // カプセルを振ってから開封
+    cap.classList.add("pop");
+    setTimeout(()=>{
       const win=prizes[Math.floor(Math.random()*prizes.length)];
+      const rarity = win>=1000?"legend":win>=300?"rare":"common";
+      const rname = {legend:"★★★ LEGEND",rare:"★★ RARE",common:"★ COMMON"}[rarity];
+      cap.hidden=true;
+      stage.className="gacha-stage rar-"+rarity;
+      prz.textContent="+"+win+" pt"; prz.hidden=false;
+      rar.textContent=rname; rar.hidden=false; closeB.hidden=false;
+      const colors = rarity==="legend"?["#ffd34a","#ffb300","#fff2b0","#ff8a3d"]
+                   : rarity==="rare"?["#4a90e2","#7fb3f0","#b3d4f5","#d7e8fb"]
+                   : ["#aab2bd","#cbd2da","#e2e7ec"];
+      confetti(rarity==="legend"?170:rarity==="rare"?100:55, colors);
+      // 保存＆ホーム更新
       account.data.lastBonus=today();
       addPoints(win,"bonus");
       setDoc(userRef(),{lastBonus:today()},{merge:true}).catch(()=>{});
-      el.textContent="🎉 +"+win+" pt!";
       $("ptTotal").textContent=account.data.points;
       const b=account.data.pb;
       $("ptBreak").textContent=`個人 ${b.practice||0} ・ 対戦 ${b.battle||0} ・ ボーナス ${b.bonus||0}`;
       $("bonusBtn").textContent="🎁 本日のボーナス受取済み";
-      gachaSpinning=false;
-    }
-  },80);
+    },500);
+  },1400);
 }
+function closeGacha(){ $("gachaOverlay").hidden=true; gachaSpinning=false; }
+
+/* 正解演出 */
+function celebrateCorrect(){ confetti(45,["#34c77b","#7be0a8","#ffd34a","#9be89a","#58a6ff"]); }
 async function renderRanking(){
   $("lobbyName").hidden=true; $("rankPage").hidden=false;
   const ul=$("rankList"); ul.replaceChildren();
@@ -1156,6 +1223,7 @@ $("toPlayBtn").addEventListener("click",gotoChoice);
 $("myPageBtn").addEventListener("click",showMyPage);
 $("myPageBackBtn").addEventListener("click",()=>{ $("myPage").hidden=true; showLobby(); });
 $("bonusBtn").addEventListener("click",claimBonus);
+$("gachaClose").addEventListener("click",closeGacha);
 $("rankBtn").addEventListener("click",renderRanking);
 $("rankBackBtn").addEventListener("click",()=>{ $("rankPage").hidden=true; showLobby(); });
 
